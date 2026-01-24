@@ -109,13 +109,66 @@ The investment score combines:
 | OBV | 5% | On-Balance Volume |
 | VWAP | 5% | Volume Weighted Average Price |
 
-## Mobile App
+## New: Market Snapshot Dashboard
 
-The frontend is a Progressive Web App (PWA) optimized for mobile:
-- Add to home screen for native app experience
-- Works offline (cached resources)
-- Touch-optimized interface
-- Dark mode by default
+The landing page now features a comprehensive Market Snapshot:
+- **Market Sentiment Bar**: VIX, Fear/Greed Index, S&P 500 trend, Treasury yields
+- **Top BUY Signals**: Stocks with highest investment scores
+- **Short Candidates**: Stocks with lowest scores for short opportunities
+- **Daily Movers**: Biggest gainers and losers
+- **Market News**: Aggregated news with sentiment analysis
+- Click any stock to view detailed charts and analysis
+
+### New API Endpoints
+
+```bash
+# Market Snapshot (all data in one call)
+GET /api/snapshot
+
+# Stock chart and details
+GET /api/stock/AAPL/chart
+
+# Stock detail page
+GET /stock/AAPL
+```
+
+## Install as Native App
+
+Investment Scorer is a Progressive Web App (PWA) that can be installed on any device for a native app experience.
+
+### Mac (Chrome/Edge)
+1. Open the app in Chrome or Edge
+2. Click the install icon (+) in the address bar
+3. Click "Install"
+
+### Windows (Chrome/Edge)
+1. Open the app in Chrome or Edge
+2. Click the menu button and select "Install Investment Scorer"
+3. Click "Install"
+
+### Linux (Chrome)
+1. Open the app in Chrome
+2. Click the menu button and select "Install Investment Scorer"
+3. Click "Install"
+
+### iOS (Safari)
+1. Open the app in Safari
+2. Tap the Share button
+3. Scroll down and tap "Add to Home Screen"
+4. Tap "Add"
+
+### Android (Chrome)
+1. Open the app in Chrome
+2. Tap the menu button
+3. Tap "Add to Home Screen" or "Install app"
+4. Tap "Install"
+
+## PWA Features
+
+- **Offline Support**: Static assets are cached for offline access
+- **Native App Experience**: Runs in standalone mode without browser UI
+- **Touch Optimized**: Dark theme UI designed for mobile
+- **Real-Time Data**: API calls always fetch fresh market data
 
 ## Disclaimer
 

@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a1a2e">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <title>{{ ticker }} - Investment Scorer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #00d9ff;
+            text-decoration: none;
+            font-size: 1rem;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 25px;
+            transition: background 0.3s;
+        }
+
+        .back-link:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .stock-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .stock-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .stock-header .ticker {
+            font-size: 1.5rem;
+            color: #00d9ff;
+            margin-bottom: 5px;
+        }
+
+        .stock-header .sector {
+            color: #8892b0;
+            font-size: 1rem;
+        }
+
+        .stock-header .price {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+
+        .chart-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            min-height: 450px;
+        }
+
+        .chart-container h2 {
+            color: #8892b0;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+        }
+
+        .tradingview-widget-container {
+            height: 400px;
+        }
+
+        .fundamentals-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .fundamentals-section h2 {
+            color: #8892b0;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+        }
+
+        .fundamentals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-card .label {
+            color: #8892b0;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card .value {
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+
+        .stat-card .value.green { color: #4caf50; }
+        .stat-card .value.red { color: #f44336; }
+
+        .actions {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            color: #1a1a2e;
+        }
+
+        .action-btn.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 217, 255, 0.3);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #8892b0;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #00d9ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: rgba(255, 82, 82, 0.2);
+            border: 1px solid #ff5252;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            color: #ff5252;
+        }
+
+        .disclaimer {
+            margin-top: 40px;
+            padding: 20px;
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 10px;
+            font-size: 0.85rem;
+            color: #ffb74d;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            .stock-header h1 { font-size: 1.8rem; }
+            .stock-header .price { font-size: 2rem; }
+            .chart-container { padding: 15px; min-height: 350px; }
+            .tradingview-widget-container { height: 300px; }
+            .actions { flex-direction: column; }
+            .action-btn { width: 100%; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">Back to Snapshot</a>
+
+        <div id="stock-content">
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Loading stock data...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- TradingView Widget Script -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
+    <script>
+        const ticker = '{{ ticker }}';
+
+        function formatNumber(num) {
+            if (!num) return 'N/A';
+            if (num >= 1e12) return '$' + (num / 1e12).toFixed(2) + 'T';
+            if (num >= 1e9) return '$' + (num / 1e9).toFixed(2) + 'B';
+            if (num >= 1e6) return '$' + (num / 1e6).toFixed(2) + 'M';
+            return '$' + num.toLocaleString();
+        }
+
+        async function loadStockData() {
+            try {
+                const response = await fetch(`/api/stock/${ticker}/chart`);
+                const data = await response.json();
+
+                if (data.error) {
+                    document.getElementById('stock-content').innerHTML = `
+                        <div class="error">Error loading stock data: ${data.error}</div>
+                        <div style="text-align: center; margin-top: 20px;">
+                            <a href="/" class="action-btn secondary">Back to Snapshot</a>
+                        </div>
+                    `;
+                    return;
+                }
+
+                renderStockPage(data);
+            } catch (error) {
+                document.getElementById('stock-content').innerHTML = `
+                    <div class="error">Failed to load stock data. Please try again.</div>
+                    <div style="text-align: center; margin-top: 20px;">
+                        <a href="/" class="action-btn secondary">Back to Snapshot</a>
+                    </div>
+                `;
+            }
+        }
+
+        function renderStockPage(data) {
+            const priceChange = data['52_week_high'] && data.current_price
+                ? ((data.current_price / data['52_week_high'] - 1) * 100).toFixed(1)
+                : null;
+
+            // Build candlestick analysis HTML
+            const ca = data.candlestick_analysis || {};
+            const patterns = ca.patterns || [];
+            const priceTrend = ca.price_trend || 'NEUTRAL';
+            const trendDesc = ca.trend_description || '';
+            const patternTrend = ca.pattern_trend || 'NEUTRAL';
+
+            const trendColor = priceTrend.includes('UP') ? '#4caf50' :
+                              priceTrend.includes('DOWN') ? '#f44336' : '#ff9800';
+            const patternColor = patternTrend === 'BULLISH' ? '#4caf50' :
+                                patternTrend === 'BEARISH' ? '#f44336' : '#ff9800';
+
+            let patternsHTML = '';
+            if (patterns.length > 0) {
+                patternsHTML = patterns.map(p => {
+                    const typeColor = p.type === 'bullish' ? '#4caf50' :
+                                     p.type === 'bearish' ? '#f44336' : '#ff9800';
+                    return `
+                        <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 15px; margin-bottom: 10px; border-left: 3px solid ${typeColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-weight: bold; color: #fff; font-size: 1.1rem;">${p.name}</span>
+                                <span style="background: ${typeColor}22; color: ${typeColor}; padding: 4px 12px; border-radius: 15px; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">${p.type}</span>
+                            </div>
+                            <div style="color: #8892b0; font-size: 0.9rem; line-height: 1.4;">${p.description}</div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                patternsHTML = '<div style="color: #8892b0; text-align: center; padding: 30px;">No significant candlestick patterns detected in recent price action</div>';
+            }
+
+            document.getElementById('stock-content').innerHTML = `
+                <div class="stock-header">
+                    <h1 id="company-name">${data.company_name || ticker}</h1>
+                    <div class="ticker">${data.ticker}</div>
+                    <div class="sector">${data.sector || 'N/A'} - ${data.industry || 'N/A'}</div>
+                    <div class="price">$${data.current_price || '--'}</div>
+                </div>
+
+                <div class="actions">
+                    <a href="/?ticker=${ticker}" class="action-btn primary">Get Full Investment Analysis</a>
+                    <a href="/" class="action-btn secondary">Back to Snapshot</a>
+                </div>
+
+                <div class="chart-container">
+                    <h2>6-Month Price Chart</h2>
+                    <div class="tradingview-widget-container" id="tradingview-chart"></div>
+                </div>
+
+                <div class="fundamentals-section">
+                    <h2>Candlestick Chart Analysis</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
+                        <div class="stat-card" style="text-align: center;">
+                            <div class="label">Price Trend</div>
+                            <div class="value" style="color: ${trendColor}; font-size: 1.4rem;">${priceTrend}</div>
+                            <div style="color: #8892b0; font-size: 0.85rem; margin-top: 8px;">${trendDesc}</div>
+                        </div>
+                        <div class="stat-card" style="text-align: center;">
+                            <div class="label">Pattern Signal</div>
+                            <div class="value" style="color: ${patternColor}; font-size: 1.4rem;">${patternTrend}</div>
+                            <div style="color: #8892b0; font-size: 0.85rem; margin-top: 8px;">${patterns.length} pattern(s) detected</div>
+                        </div>
+                    </div>
+                    <h3 style="color: #8892b0; font-size: 0.9rem; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px;">Detected Patterns</h3>
+                    ${patternsHTML}
+                </div>
+
+                <div class="fundamentals-section">
+                    <h2>Key Metrics</h2>
+                    <div class="fundamentals-grid" id="fundamentals">
+                        <div class="stat-card">
+                            <div class="label">P/E Ratio</div>
+                            <div class="value">${data.pe_ratio ? data.pe_ratio.toFixed(2) : 'N/A'}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">Market Cap</div>
+                            <div class="value">${formatNumber(data.market_cap)}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">Shares Outstanding</div>
+                            <div class="value">${data.shares_outstanding ? formatNumber(data.shares_outstanding) : 'N/A'}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">Beta</div>
+                            <div class="value">${data.beta ? data.beta.toFixed(2) : 'N/A'}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">52-Week High</div>
+                            <div class="value green">$${data['52_week_high'] ? data['52_week_high'].toFixed(2) : '--'}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">52-Week Low</div>
+                            <div class="value red">$${data['52_week_low'] ? data['52_week_low'].toFixed(2) : '--'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="disclaimer">
+                    <strong>Disclaimer:</strong> This tool is for educational purposes only. Not financial advice. Always do your own research.
+                </div>
+            `;
+
+            // Initialize TradingView widget after content is rendered
+            initTradingViewWidget();
+        }
+
+        function initTradingViewWidget() {
+            if (typeof TradingView !== 'undefined') {
+                new TradingView.widget({
+                    "width": "100%",
+                    "height": 400,
+                    "symbol": ticker,
+                    "interval": "D",
+                    "timezone": "America/New_York",
+                    "theme": "dark",
+                    "style": "1",
+                    "locale": "en",
+                    "toolbar_bg": "#1a1a2e",
+                    "enable_publishing": false,
+                    "hide_side_toolbar": false,
+                    "allow_symbol_change": true,
+                    "container_id": "tradingview-chart",
+                    "hide_volume": false
+                });
+            } else {
+                // Fallback if TradingView script hasn't loaded yet
+                setTimeout(initTradingViewWidget, 500);
+            }
+        }
+
+        // Load stock data on page load
+        loadStockData();
+    </script>
+</body>
+</html>

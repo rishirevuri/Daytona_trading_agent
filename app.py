@@ -159,6 +159,37 @@ class NewsAnalyzer:
             'sentiment_score': max(-20, min(20, overall_sentiment * 2))
         }
 
+    @staticmethod
+    def fetch_market_news():
+        """Fetch aggregated market news from major indices"""
+        market_tickers = ['SPY', 'QQQ', 'DIA']
+        all_news = []
+        seen_titles = set()
+
+        for ticker in market_tickers:
+            try:
+                stock = yf.Ticker(ticker)
+                news = stock.news
+                if news:
+                    for item in news[:5]:
+                        title = item.get('title', '')
+                        if title and title not in seen_titles:
+                            seen_titles.add(title)
+                            sentiment, _ = NewsAnalyzer.analyze_sentiment(title)
+                            all_news.append({
+                                'title': title,
+                                'publisher': item.get('publisher', ''),
+                                'link': item.get('link', ''),
+                                'published': datetime.fromtimestamp(
+                                    item.get('providerPublishTime', 0)
+                                ).strftime('%Y-%m-%d %H:%M'),
+                                'sentiment': sentiment
+                            })
+            except:
+                pass
+
+        return all_news[:15]
+
 
 class TechnicalAnalyzer:
     """Enhanced technical analysis with more accurate scoring"""
@@ -268,6 +299,244 @@ class TechnicalAnalyzer:
         typical_price = (high + low + close) / 3
         vwap = (typical_price * volume).cumsum() / volume.cumsum()
         return vwap
+
+
+class CandlestickAnalyzer:
+    """Analyzes candlestick patterns for trend identification"""
+
+    @staticmethod
+    def detect_patterns(open_prices, high, low, close):
+        """Detect candlestick patterns and return pattern names with signals"""
+        patterns = []
+
+        if len(close) < 5:
+            return patterns, 50, 'NEUTRAL'
+
+        # Get recent candles for analysis
+        o = open_prices.iloc[-5:].values
+        h = high.iloc[-5:].values
+        l = low.iloc[-5:].values
+        c = close.iloc[-5:].values
+
+        # Calculate body and wick sizes
+        body = abs(c - o)
+        upper_wick = h - np.maximum(o, c)
+        lower_wick = np.minimum(o, c) - l
+        avg_body = np.mean(body[:-1]) if len(body) > 1 else body[-1]
+
+        # Current candle properties
+        curr_body = body[-1]
+        curr_upper = upper_wick[-1]
+        curr_lower = lower_wick[-1]
+        is_bullish = c[-1] > o[-1]
+        is_bearish = c[-1] < o[-1]
+
+        # === BULLISH PATTERNS ===
+
+        # Hammer (bullish reversal)
+        if curr_lower > curr_body * 2 and curr_upper < curr_body * 0.5 and is_bullish:
+            patterns.append({
+                'name': 'Hammer',
+                'type': 'bullish',
+                'strength': 'strong',
+                'description': 'Bullish reversal pattern with long lower wick, indicates buyers stepping in'
+            })
+
+        # Inverted Hammer (bullish reversal)
+        if curr_upper > curr_body * 2 and curr_lower < curr_body * 0.5 and is_bullish:
+            patterns.append({
+                'name': 'Inverted Hammer',
+                'type': 'bullish',
+                'strength': 'moderate',
+                'description': 'Potential bullish reversal, watch for confirmation'
+            })
+
+        # Bullish Engulfing
+        if len(c) >= 2 and c[-2] < o[-2] and is_bullish:
+            if c[-1] > o[-2] and o[-1] < c[-2]:
+                patterns.append({
+                    'name': 'Bullish Engulfing',
+                    'type': 'bullish',
+                    'strength': 'strong',
+                    'description': 'Strong bullish reversal - current candle completely engulfs previous bearish candle'
+                })
+
+        # Morning Star (3-candle bullish reversal)
+        if len(c) >= 3:
+            if c[-3] < o[-3] and body[-2] < avg_body * 0.3 and is_bullish and c[-1] > (o[-3] + c[-3]) / 2:
+                patterns.append({
+                    'name': 'Morning Star',
+                    'type': 'bullish',
+                    'strength': 'strong',
+                    'description': 'Three-candle bullish reversal pattern indicating trend change'
+                })
+
+        # Three White Soldiers
+        if len(c) >= 3:
+            if all(c[-3:] > o[-3:]) and c[-1] > c[-2] > c[-3]:
+                patterns.append({
+                    'name': 'Three White Soldiers',
+                    'type': 'bullish',
+                    'strength': 'very_strong',
+                    'description': 'Three consecutive bullish candles showing strong buying pressure'
+                })
+
+        # Bullish Marubozu (no wicks)
+        if is_bullish and curr_upper < curr_body * 0.1 and curr_lower < curr_body * 0.1:
+            patterns.append({
+                'name': 'Bullish Marubozu',
+                'type': 'bullish',
+                'strength': 'strong',
+                'description': 'Strong bullish candle with no wicks, pure buying pressure'
+            })
+
+        # Dragonfly Doji (bullish at support)
+        if curr_body < avg_body * 0.1 and curr_lower > avg_body * 2 and curr_upper < avg_body * 0.1:
+            patterns.append({
+                'name': 'Dragonfly Doji',
+                'type': 'bullish',
+                'strength': 'moderate',
+                'description': 'Potential bullish reversal at support level'
+            })
+
+        # === BEARISH PATTERNS ===
+
+        # Shooting Star (bearish reversal)
+        if curr_upper > curr_body * 2 and curr_lower < curr_body * 0.5 and is_bearish:
+            patterns.append({
+                'name': 'Shooting Star',
+                'type': 'bearish',
+                'strength': 'strong',
+                'description': 'Bearish reversal pattern with long upper wick, indicates selling pressure'
+            })
+
+        # Hanging Man
+        if curr_lower > curr_body * 2 and curr_upper < curr_body * 0.5 and is_bearish:
+            patterns.append({
+                'name': 'Hanging Man',
+                'type': 'bearish',
+                'strength': 'moderate',
+                'description': 'Warning of potential bearish reversal after uptrend'
+            })
+
+        # Bearish Engulfing
+        if len(c) >= 2 and c[-2] > o[-2] and is_bearish:
+            if c[-1] < o[-2] and o[-1] > c[-2]:
+                patterns.append({
+                    'name': 'Bearish Engulfing',
+                    'type': 'bearish',
+                    'strength': 'strong',
+                    'description': 'Strong bearish reversal - current candle completely engulfs previous bullish candle'
+                })
+
+        # Evening Star (3-candle bearish reversal)
+        if len(c) >= 3:
+            if c[-3] > o[-3] and body[-2] < avg_body * 0.3 and is_bearish and c[-1] < (o[-3] + c[-3]) / 2:
+                patterns.append({
+                    'name': 'Evening Star',
+                    'type': 'bearish',
+                    'strength': 'strong',
+                    'description': 'Three-candle bearish reversal pattern indicating trend change'
+                })
+
+        # Three Black Crows
+        if len(c) >= 3:
+            if all(c[-3:] < o[-3:]) and c[-1] < c[-2] < c[-3]:
+                patterns.append({
+                    'name': 'Three Black Crows',
+                    'type': 'bearish',
+                    'strength': 'very_strong',
+                    'description': 'Three consecutive bearish candles showing strong selling pressure'
+                })
+
+        # Bearish Marubozu
+        if is_bearish and curr_upper < curr_body * 0.1 and curr_lower < curr_body * 0.1:
+            patterns.append({
+                'name': 'Bearish Marubozu',
+                'type': 'bearish',
+                'strength': 'strong',
+                'description': 'Strong bearish candle with no wicks, pure selling pressure'
+            })
+
+        # Gravestone Doji (bearish at resistance)
+        if curr_body < avg_body * 0.1 and curr_upper > avg_body * 2 and curr_lower < avg_body * 0.1:
+            patterns.append({
+                'name': 'Gravestone Doji',
+                'type': 'bearish',
+                'strength': 'moderate',
+                'description': 'Potential bearish reversal at resistance level'
+            })
+
+        # === NEUTRAL/INDECISION PATTERNS ===
+
+        # Doji (indecision)
+        if curr_body < avg_body * 0.1 and curr_upper > 0 and curr_lower > 0:
+            if not any(p['name'] in ['Dragonfly Doji', 'Gravestone Doji'] for p in patterns):
+                patterns.append({
+                    'name': 'Doji',
+                    'type': 'neutral',
+                    'strength': 'weak',
+                    'description': 'Market indecision - watch for next candle confirmation'
+                })
+
+        # Spinning Top
+        if curr_body < avg_body * 0.5 and curr_upper > curr_body and curr_lower > curr_body:
+            if not any(p['name'] == 'Doji' for p in patterns):
+                patterns.append({
+                    'name': 'Spinning Top',
+                    'type': 'neutral',
+                    'strength': 'weak',
+                    'description': 'Indecision pattern, trend may be weakening'
+                })
+
+        # Calculate pattern score
+        score = 50  # neutral baseline
+        for p in patterns:
+            strength_value = {'very_strong': 15, 'strong': 10, 'moderate': 6, 'weak': 3}.get(p['strength'], 5)
+            if p['type'] == 'bullish':
+                score += strength_value
+            elif p['type'] == 'bearish':
+                score -= strength_value
+
+        # Clamp score
+        score = max(0, min(100, score))
+
+        # Determine overall trend
+        if score >= 65:
+            trend = 'BULLISH'
+        elif score <= 35:
+            trend = 'BEARISH'
+        else:
+            trend = 'NEUTRAL'
+
+        return patterns, score, trend
+
+    @staticmethod
+    def identify_trend(close, period=20):
+        """Identify the current price trend"""
+        if len(close) < period:
+            return 'NEUTRAL', 'Insufficient data for trend analysis'
+
+        recent = close.iloc[-period:]
+        sma = recent.mean()
+        current = close.iloc[-1]
+
+        # Calculate slope using linear regression
+        x = np.arange(len(recent))
+        slope = np.polyfit(x, recent.values, 1)[0]
+        slope_pct = (slope / sma) * 100
+
+        # Trend strength
+        if slope_pct > 0.5:
+            if slope_pct > 1.5:
+                return 'STRONG UPTREND', f'Price rising sharply ({slope_pct:.2f}% per day)'
+            return 'UPTREND', f'Price in upward trend ({slope_pct:.2f}% per day)'
+        elif slope_pct < -0.5:
+            if slope_pct < -1.5:
+                return 'STRONG DOWNTREND', f'Price falling sharply ({slope_pct:.2f}% per day)'
+            return 'DOWNTREND', f'Price in downward trend ({slope_pct:.2f}% per day)'
+        else:
+            return 'SIDEWAYS', f'Price consolidating ({slope_pct:.2f}% per day)'
 
 
 def get_vix():
@@ -383,6 +652,37 @@ def get_consumer_sentiment():
         consumer_data['consumer_signal'] = 'NEUTRAL'
 
     return consumer_data
+
+
+def get_daily_movers():
+    """Get stocks with biggest daily price changes"""
+    def get_change(ticker):
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="2d")
+            if len(hist) >= 2:
+                prev_close = hist['Close'].iloc[-2]
+                curr_close = hist['Close'].iloc[-1]
+                pct_change = ((curr_close - prev_close) / prev_close) * 100
+                return {
+                    'ticker': ticker,
+                    'price': round(curr_close, 2),
+                    'change_pct': round(pct_change, 2)
+                }
+        except:
+            pass
+        return None
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(get_change, SCREENING_UNIVERSE))
+
+    valid = [r for r in results if r]
+    valid.sort(key=lambda x: x['change_pct'], reverse=True)
+
+    return {
+        'gainers': valid[:10],
+        'losers': list(reversed(valid[-10:]))
+    }
 
 
 def get_earnings_data(ticker):
@@ -1159,23 +1459,99 @@ def calculate_investment_score(ticker_symbol):
         else:
             tech_scores['earnings'] = 50
 
+        # Candlestick pattern analysis
+        try:
+            open_prices = hist['Open']
+            candlestick_patterns, pattern_score, pattern_trend = CandlestickAnalyzer.detect_patterns(
+                open_prices, hist['High'], hist['Low'], close
+            )
+            price_trend, trend_description = CandlestickAnalyzer.identify_trend(close)
+
+            tech_scores['candlestick'] = pattern_score
+
+            # Add candlestick evidence
+            if candlestick_patterns:
+                pattern_names = [p['name'] for p in candlestick_patterns]
+                bullish_patterns = [p for p in candlestick_patterns if p['type'] == 'bullish']
+                bearish_patterns = [p for p in candlestick_patterns if p['type'] == 'bearish']
+
+                if bullish_patterns:
+                    all_evidence.append({
+                        'factor': 'Candlestick Patterns (Bullish)',
+                        'value': ', '.join([p['name'] for p in bullish_patterns]),
+                        'impact': 'BULLISH',
+                        'detail': bullish_patterns[0]['description'],
+                        'weight': f'+{len(bullish_patterns) * 8} points',
+                        'category': 'candlestick'
+                    })
+
+                if bearish_patterns:
+                    all_evidence.append({
+                        'factor': 'Candlestick Patterns (Bearish)',
+                        'value': ', '.join([p['name'] for p in bearish_patterns]),
+                        'impact': 'BEARISH',
+                        'detail': bearish_patterns[0]['description'],
+                        'weight': f'-{len(bearish_patterns) * 8} points',
+                        'category': 'candlestick'
+                    })
+
+            # Add trend evidence
+            if 'UPTREND' in price_trend:
+                all_evidence.append({
+                    'factor': 'Price Trend Analysis',
+                    'value': price_trend,
+                    'impact': 'BULLISH',
+                    'detail': trend_description,
+                    'weight': '+10 points',
+                    'category': 'trend'
+                })
+            elif 'DOWNTREND' in price_trend:
+                all_evidence.append({
+                    'factor': 'Price Trend Analysis',
+                    'value': price_trend,
+                    'impact': 'BEARISH',
+                    'detail': trend_description,
+                    'weight': '-10 points',
+                    'category': 'trend'
+                })
+            else:
+                all_evidence.append({
+                    'factor': 'Price Trend Analysis',
+                    'value': price_trend,
+                    'impact': 'NEUTRAL',
+                    'detail': trend_description,
+                    'weight': '0 points',
+                    'category': 'trend'
+                })
+
+            indicators['Candlestick_Trend'] = pattern_trend
+            indicators['Price_Trend'] = price_trend
+
+        except Exception as e:
+            tech_scores['candlestick'] = 50
+            candlestick_patterns = []
+            price_trend = 'NEUTRAL'
+            trend_description = 'Unable to analyze trend'
+            pattern_trend = 'NEUTRAL'
+
         # Calculate weighted final score
         weights = {
-            'rsi': 0.08,
-            'macd': 0.08,
-            'bollinger': 0.06,
-            'stochastic': 0.06,
-            'williams_r': 0.04,
-            'cci': 0.04,
-            'adx': 0.06,
-            'mfi': 0.05,
+            'rsi': 0.07,
+            'macd': 0.07,
+            'bollinger': 0.05,
+            'stochastic': 0.05,
+            'williams_r': 0.03,
+            'cci': 0.03,
+            'adx': 0.05,
+            'mfi': 0.04,
             'obv': 0.04,
-            'moving_avg': 0.10,
-            'vwap': 0.04,
-            'vix': 0.10,
-            'consumer': 0.05,
-            'news': 0.08,
-            'earnings': 0.12
+            'moving_avg': 0.09,
+            'vwap': 0.03,
+            'vix': 0.08,
+            'consumer': 0.04,
+            'news': 0.07,
+            'earnings': 0.10,
+            'candlestick': 0.16  # Candlestick patterns weight
         }
 
         technical_score = sum(tech_scores.get(k, 50) * weights.get(k, 0) for k in weights)
@@ -1240,6 +1616,12 @@ def calculate_investment_score(ticker_symbol):
             'earnings': earnings,
             'market_sentiment': market_sentiment,
             'consumer_sentiment': consumer_sentiment,
+            'candlestick_analysis': {
+                'patterns': candlestick_patterns,
+                'pattern_trend': pattern_trend,
+                'price_trend': price_trend,
+                'trend_description': trend_description
+            },
             'fundamentals': {
                 'market_cap': info.get('marketCap', 0),
                 'pe_ratio': info.get('trailingPE'),
@@ -1321,7 +1703,22 @@ def screen_stocks(filter_type='all', limit=20):
 # API Routes
 @app.route('/')
 def index():
-    return send_from_directory(app.static_folder, 'index.html')
+    return render_template('index.html')
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    """Serve static files from static directory"""
+    return send_from_directory('static', filename)
+
+@app.route('/manifest.json')
+def manifest():
+    """Serve PWA manifest"""
+    return send_from_directory('static', 'manifest.json')
+
+@app.route('/sw.js')
+def service_worker():
+    """Serve service worker from root"""
+    return send_from_directory('static', 'sw.js', mimetype='application/javascript')
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
@@ -1391,6 +1788,81 @@ def speak():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/snapshot', methods=['GET'])
+def snapshot():
+    """Market snapshot combining all data for dashboard"""
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        buys_future = executor.submit(screen_stocks, 'strong_buys', 10)
+        shorts_future = executor.submit(screen_stocks, 'shorts', 10)
+        movers_future = executor.submit(get_daily_movers)
+        sentiment_future = executor.submit(get_market_sentiment)
+
+    movers_result = movers_future.result()
+    return jsonify({
+        'timestamp': datetime.now().isoformat(),
+        'market_sentiment': sentiment_future.result(),
+        'strong_buys': buys_future.result(),
+        'shorts': shorts_future.result(),
+        'gainers': movers_result['gainers'],
+        'losers': movers_result['losers'],
+        'market_news': NewsAnalyzer.fetch_market_news()
+    })
+
+@app.route('/api/stock/<ticker>/chart', methods=['GET'])
+def stock_chart(ticker):
+    """Get candlestick data and stock details with pattern analysis"""
+    try:
+        stock = yf.Ticker(ticker.upper())
+        info = stock.info
+        hist = stock.history(period="6mo")
+
+        if hist.empty:
+            return jsonify({'error': 'No data available for this ticker'}), 404
+
+        candles = [{
+            'date': idx.strftime('%Y-%m-%d'),
+            'open': round(row['Open'], 2),
+            'high': round(row['High'], 2),
+            'low': round(row['Low'], 2),
+            'close': round(row['Close'], 2),
+            'volume': int(row['Volume'])
+        } for idx, row in hist.iterrows()]
+
+        # Analyze candlestick patterns
+        patterns, pattern_score, pattern_trend = CandlestickAnalyzer.detect_patterns(
+            hist['Open'], hist['High'], hist['Low'], hist['Close']
+        )
+        price_trend, trend_description = CandlestickAnalyzer.identify_trend(hist['Close'])
+
+        return jsonify({
+            'ticker': ticker.upper(),
+            'company_name': info.get('longName', ticker),
+            'sector': info.get('sector', 'N/A'),
+            'industry': info.get('industry', 'N/A'),
+            'pe_ratio': info.get('trailingPE'),
+            'market_cap': info.get('marketCap'),
+            'shares_outstanding': info.get('sharesOutstanding'),
+            'beta': info.get('beta'),
+            '52_week_high': info.get('fiftyTwoWeekHigh'),
+            '52_week_low': info.get('fiftyTwoWeekLow'),
+            'current_price': round(hist['Close'].iloc[-1], 2),
+            'candles': candles,
+            'candlestick_analysis': {
+                'patterns': patterns,
+                'pattern_trend': pattern_trend,
+                'pattern_score': pattern_score,
+                'price_trend': price_trend,
+                'trend_description': trend_description
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/stock/<ticker>')
+def stock_page(ticker):
+    """Stock detail page"""
+    return render_template('stock.html', ticker=ticker.upper())
 
 @app.route('/health')
 def health():

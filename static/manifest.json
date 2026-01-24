@@ -1,0 +1,43 @@
+{
+    "name": "Investment Scorer",
+    "short_name": "InvestScore",
+    "description": "AI-powered stock analysis with real-time market snapshots, investment scores, and buy/sell recommendations",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#1a1a2e",
+    "theme_color": "#1a1a2e",
+    "orientation": "portrait-primary",
+    "scope": "/",
+    "icons": [
+        {
+            "src": "/static/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/static/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": ["finance", "business", "utilities"],
+    "screenshots": [],
+    "shortcuts": [
+        {
+            "name": "Market Snapshot",
+            "short_name": "Snapshot",
+            "description": "View real-time market overview",
+            "url": "/",
+            "icons": []
+        },
+        {
+            "name": "Analyze Stock",
+            "short_name": "Analyze",
+            "description": "Analyze a specific stock",
+            "url": "/?ticker=",
+            "icons": []
+        }
+    ]
+}

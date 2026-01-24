@@ -2,14 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0a" />
-    <meta
-      name="description"
-      content="StockPulse - Intelligent Market Analysis"
-    />
+    <meta name="description" content="StockPulse - AI-powered stock analysis with real-time market data" />
+    
+    <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/static/icon-192.png" />
+    
+    <!-- iOS PWA Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="StockPulse" />
+    
+    <!-- iOS Icons -->
+    <link rel="apple-touch-icon" href="/static/icon-180.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/static/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png" />
+    <link rel="apple-touch-icon" sizes="167x167" href="/static/icon-180.png" />
+    
+    <!-- iOS Splash Screens -->
+    <link rel="apple-touch-startup-image" href="/static/splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/static/splash-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icon-16.png" />
+    
     <title>StockPulse</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

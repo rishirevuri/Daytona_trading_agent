@@ -1,19 +1,62 @@
 {
-    "name": "Investment Scorer",
-    "short_name": "InvestScore",
-    "description": "AI-powered stock analysis with real-time market snapshots, investment scores, and buy/sell recommendations",
+    "name": "StockPulse - Market Intelligence",
+    "short_name": "StockPulse",
+    "description": "AI-powered stock analysis with real-time market data, investment scores, and trading recommendations",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#1a1a2e",
-    "theme_color": "#1a1a2e",
-    "orientation": "portrait-primary",
+    "background_color": "#0a0a0a",
+    "theme_color": "#0a0a0a",
+    "orientation": "any",
     "scope": "/",
+    "id": "/",
     "icons": [
+        {
+            "src": "/static/icon-72.png",
+            "sizes": "72x72",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/static/icon-96.png",
+            "sizes": "96x96",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/static/icon-128.png",
+            "sizes": "128x128",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/static/icon-144.png",
+            "sizes": "144x144",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/static/icon-152.png",
+            "sizes": "152x152",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/static/icon-180.png",
+            "sizes": "180x180",
+            "type": "image/png",
+            "purpose": "any"
+        },
         {
             "src": "/static/icon-192.png",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "any maskable"
+        },
+        {
+            "src": "/static/icon-384.png",
+            "sizes": "384x384",
+            "type": "image/png",
+            "purpose": "any"
         },
         {
             "src": "/static/icon-512.png",
@@ -26,18 +69,23 @@
     "screenshots": [],
     "shortcuts": [
         {
-            "name": "Market Snapshot",
-            "short_name": "Snapshot",
-            "description": "View real-time market overview",
-            "url": "/",
-            "icons": []
+            "name": "Market Overview",
+            "short_name": "Overview",
+            "description": "View real-time market snapshot",
+            "url": "/"
         },
         {
             "name": "Analyze Stock",
             "short_name": "Analyze",
-            "description": "Analyze a specific stock",
-            "url": "/?ticker=",
-            "icons": []
+            "description": "Analyze a specific stock ticker",
+            "url": "/?section=analyze"
+        },
+        {
+            "name": "Earnings Calendar",
+            "short_name": "Earnings",
+            "description": "View upcoming earnings",
+            "url": "/?section=earnings"
         }
-    ]
+    ],
+    "prefer_related_applications": false
 }

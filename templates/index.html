@@ -3679,12 +3679,9 @@
         `;
       }
 
-      async function renderCandlestickChart(ticker) {
+      function renderCandlestickChart(candles) {
         try {
-          const response = await fetch('/api/stock/' + ticker + '/chart');
-          const data = await response.json();
-          
-          if (data.error || !data.candles || data.candles.length === 0) {
+          if (!candles || candles.length === 0) {
             console.log('No chart data available');
             return;
           }
@@ -3707,9 +3704,6 @@
           const height = 300;
           const padding = { top: 20, right: 60, bottom: 40, left: 20 };
 
-          // Get last 60 candles
-          const candles = data.candles.slice(-60);
-          
           // Calculate price range
           const prices = candles.flatMap(c => [c.high, c.low]);
           const minPrice = Math.min(...prices);
@@ -4031,7 +4025,9 @@
 
         // Render candlestick chart after DOM is updated
         setTimeout(() => {
-          renderCandlestickChart(data.ticker);
+          if (data.candlestick_analysis && data.candlestick_analysis.chart_data) {
+            renderCandlestickChart(data.candlestick_analysis.chart_data);
+          }
         }, 100);
       }
 

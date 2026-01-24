@@ -2866,7 +2866,14 @@ def calculate_investment_score(ticker_symbol):
                 'patterns': candlestick_patterns,
                 'pattern_trend': pattern_trend,
                 'price_trend': price_trend,
-                'trend_description': trend_description
+                'trend_description': trend_description,
+                'chart_data': [{
+                    'date': idx.strftime('%Y-%m-%d'),
+                    'open': round(row['Open'], 2),
+                    'high': round(row['High'], 2),
+                    'low': round(row['Low'], 2),
+                    'close': round(row['Close'], 2)
+                } for idx, row in hist.tail(60).iterrows()]
             },
             'fundamentals': {
                 'market_cap': info.get('marketCap', 0),

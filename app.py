@@ -10,8 +10,104 @@ import os
 import requests
 import re
 from collections import defaultdict
+import time
+import threading
 
 app = Flask(__name__, static_folder='frontend/build', static_url_path='')
+
+
+# ============== CACHING SYSTEM ==============
+# Simple thread-safe cache with TTL to avoid Yahoo Finance rate limits
+
+class TickerCache:
+    """Thread-safe cache for Yahoo Finance data with TTL"""
+
+    def __init__(self, default_ttl=300):  # 5 minutes default
+        self._cache = {}
+        self._lock = threading.Lock()
+        self.default_ttl = default_ttl
+
+    def _is_expired(self, entry):
+        return time.time() > entry['expires']
+
+    def get(self, key):
+        with self._lock:
+            if key in self._cache:
+                entry = self._cache[key]
+                if not self._is_expired(entry):
+                    return entry['data']
+                else:
+                    del self._cache[key]
+        return None
+
+    def set(self, key, data, ttl=None):
+        if ttl is None:
+            ttl = self.default_ttl
+        with self._lock:
+            self._cache[key] = {
+                'data': data,
+                'expires': time.time() + ttl
+            }
+
+    def clear(self):
+        with self._lock:
+            self._cache.clear()
+
+
+# Global cache instance
+_ticker_cache = TickerCache(default_ttl=300)  # 5 minute cache
+
+
+def get_cached_ticker(symbol):
+    """Get a yfinance Ticker object (not cached, but used for consistency)"""
+    return yf.Ticker(symbol)
+
+
+def get_cached_history(symbol, period="1y"):
+    """Get cached historical data for a ticker"""
+    cache_key = f"history_{symbol}_{period}"
+    cached = _ticker_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    ticker = yf.Ticker(symbol)
+    hist = ticker.history(period=period)
+    _ticker_cache.set(cache_key, hist)
+    return hist
+
+
+def get_cached_info(symbol):
+    """Get cached ticker info (fundamentals)"""
+    cache_key = f"info_{symbol}"
+    cached = _ticker_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    ticker = yf.Ticker(symbol)
+    info = ticker.info
+    _ticker_cache.set(cache_key, info)
+    return info
+
+
+def get_cached_news(symbol):
+    """Get cached news for a ticker"""
+    cache_key = f"news_{symbol}"
+    cached = _ticker_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    ticker = yf.Ticker(symbol)
+    news = ticker.news
+    _ticker_cache.set(cache_key, news, ttl=600)  # 10 min cache for news
+    return news
+
+
+def clear_cache():
+    """Clear all cached data"""
+    _ticker_cache.clear()
+
+
+# ============== END CACHING SYSTEM ==============
 CORS(app)
 
 # ElevenLabs Configuration
@@ -61,11 +157,10 @@ class NewsAnalyzer:
 
     @staticmethod
     def fetch_stock_news(ticker):
-        """Fetch news for a specific ticker using yfinance"""
+        """Fetch news for a specific ticker using yfinance (cached)"""
         news_items = []
         try:
-            stock = yf.Ticker(ticker)
-            news = stock.news
+            news = get_cached_news(ticker)
             if news:
                 for item in news[:10]:
                     news_items.append({
@@ -168,8 +263,7 @@ class NewsAnalyzer:
 
         for ticker in market_tickers:
             try:
-                stock = yf.Ticker(ticker)
-                news = stock.news
+                news = get_cached_news(ticker)
                 if news:
                     for item in news[:5]:
                         title = item.get('title', '')
@@ -540,10 +634,9 @@ class CandlestickAnalyzer:
 
 
 def get_vix():
-    """Get current VIX value"""
+    """Get current VIX value (cached)"""
     try:
-        vix = yf.Ticker("^VIX")
-        vix_data = vix.history(period="5d")
+        vix_data = get_cached_history("^VIX", period="5d")
         if not vix_data.empty:
             return vix_data['Close'].iloc[-1]
     except:
@@ -552,12 +645,11 @@ def get_vix():
 
 
 def get_market_sentiment():
-    """Get broader market sentiment indicators"""
+    """Get broader market sentiment indicators (cached)"""
     sentiment = {}
 
     try:
-        vix = yf.Ticker("^VIX")
-        vix_data = vix.history(period="1mo")
+        vix_data = get_cached_history("^VIX", period="1mo")
         if not vix_data.empty:
             sentiment['vix'] = round(vix_data['Close'].iloc[-1], 2)
             sentiment['vix_change'] = round(vix_data['Close'].pct_change().iloc[-1] * 100, 2)
@@ -580,16 +672,14 @@ def get_market_sentiment():
         sentiment['vix_signal'] = 'NORMAL'
 
     try:
-        tny = yf.Ticker("^TNX")
-        tny_data = tny.history(period="5d")
+        tny_data = get_cached_history("^TNX", period="5d")
         if not tny_data.empty:
             sentiment['treasury_10y'] = round(tny_data['Close'].iloc[-1], 2)
     except:
         sentiment['treasury_10y'] = 4.0
 
     try:
-        spy = yf.Ticker("SPY")
-        spy_data = spy.history(period="1mo")
+        spy_data = get_cached_history("SPY", period="1mo")
         if not spy_data.empty:
             sentiment['sp500_monthly_change'] = round(
                 (spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[0] - 1) * 100, 2
@@ -634,8 +724,7 @@ def get_consumer_sentiment():
 
     try:
         # Use XLY (Consumer Discretionary) as proxy for consumer confidence
-        xly = yf.Ticker("XLY")
-        xly_data = xly.history(period="1mo")
+        xly_data = get_cached_history("XLY", period="1mo")
         if not xly_data.empty:
             change = (xly_data['Close'].iloc[-1] / xly_data['Close'].iloc[0] - 1) * 100
             consumer_data['retail_sentiment'] = round(change, 2)
@@ -655,11 +744,10 @@ def get_consumer_sentiment():
 
 
 def get_daily_movers():
-    """Get stocks with biggest daily price changes"""
+    """Get stocks with biggest daily price changes (cached)"""
     def get_change(ticker):
         try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="2d")
+            hist = get_cached_history(ticker, period="2d")
             if len(hist) >= 2:
                 prev_close = hist['Close'].iloc[-2]
                 curr_close = hist['Close'].iloc[-1]
@@ -673,7 +761,7 @@ def get_daily_movers():
             pass
         return None
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:  # Reduced from 10 to avoid rate limits
         results = list(executor.map(get_change, SCREENING_UNIVERSE))
 
     valid = [r for r in results if r]
@@ -686,7 +774,13 @@ def get_daily_movers():
 
 
 def get_earnings_data(ticker):
-    """Get earnings and fundamental data"""
+    """Get earnings and fundamental data (cached)"""
+    # Check cache first
+    cache_key = f"earnings_{ticker}"
+    cached = _ticker_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     earnings_data = {
         'earnings_date': None,
         'earnings_history': [],
@@ -696,7 +790,7 @@ def get_earnings_data(ticker):
     }
 
     try:
-        stock = yf.Ticker(ticker)
+        stock = yf.Ticker(ticker)  # Need full Ticker for calendar/earnings_history
 
         try:
             calendar = stock.calendar
@@ -725,7 +819,7 @@ def get_earnings_data(ticker):
             pass
 
         try:
-            info = stock.info
+            info = get_cached_info(ticker)
             earnings_data['analyst_price_targets'] = {
                 'target_high': info.get('targetHighPrice', 0),
                 'target_low': info.get('targetLowPrice', 0),
@@ -739,6 +833,8 @@ def get_earnings_data(ticker):
     except Exception as e:
         pass
 
+    # Cache the result
+    _ticker_cache.set(cache_key, earnings_data, ttl=600)  # 10 min cache for earnings
     return earnings_data
 
 
@@ -1284,13 +1380,11 @@ def generate_summary(data):
 
 
 def calculate_investment_score(ticker_symbol):
-    """Main function to calculate comprehensive investment score"""
+    """Main function to calculate comprehensive investment score (cached)"""
     try:
-        ticker = yf.Ticker(ticker_symbol)
-
-        hist = ticker.history(period="1y")
+        hist = get_cached_history(ticker_symbol, period="1y")
         if hist.empty or len(hist) < 200:
-            hist = ticker.history(period="max")
+            hist = get_cached_history(ticker_symbol, period="max")
 
         if hist.empty or len(hist) < 50:
             return {"error": f"Insufficient data for {ticker_symbol}"}
@@ -1307,7 +1401,7 @@ def calculate_investment_score(ticker_symbol):
         tech_scores, indicators, signals, tech_evidence = calculate_technical_score(hist, current_price)
 
         # Get fundamental data
-        info = ticker.info
+        info = get_cached_info(ticker_symbol)
         fund_score, fund_evidence = calculate_fundamental_score(info)
 
         # Get earnings data
@@ -1671,7 +1765,7 @@ def screen_stocks(filter_type='all', limit=20):
             pass
         return None
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:  # Reduced from 10 to avoid rate limits
         futures = {executor.submit(analyze_ticker, ticker): ticker for ticker in SCREENING_UNIVERSE}
 
         for future in as_completed(futures):
@@ -1811,11 +1905,11 @@ def snapshot():
 
 @app.route('/api/stock/<ticker>/chart', methods=['GET'])
 def stock_chart(ticker):
-    """Get candlestick data and stock details with pattern analysis"""
+    """Get candlestick data and stock details with pattern analysis (cached)"""
     try:
-        stock = yf.Ticker(ticker.upper())
-        info = stock.info
-        hist = stock.history(period="6mo")
+        ticker_upper = ticker.upper()
+        info = get_cached_info(ticker_upper)
+        hist = get_cached_history(ticker_upper, period="6mo")
 
         if hist.empty:
             return jsonify({'error': 'No data available for this ticker'}), 404
@@ -1863,6 +1957,12 @@ def stock_chart(ticker):
 def stock_page(ticker):
     """Stock detail page"""
     return render_template('stock.html', ticker=ticker.upper())
+
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache_endpoint():
+    """Clear all cached data to force fresh API calls"""
+    clear_cache()
+    return jsonify({"status": "success", "message": "Cache cleared"})
 
 @app.route('/health')
 def health():

@@ -1,2 +1,0 @@
-# This directory holds historical price data (CSV/Parquet files)
-# Data files are not committed to git (see .gitignore)

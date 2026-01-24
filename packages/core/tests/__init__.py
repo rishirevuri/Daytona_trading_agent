@@ -1,1 +1,0 @@
-"""SignalOps test suite."""

@@ -1,0 +1,49 @@
+# Daytona Workspace Configuration
+# This file configures your development environment for cloud deployment
+
+name: daytona-trading-agent
+description: AI-Powered Investment Scoring Application with Real-Time Stock Analysis
+
+# Repository settings
+repository:
+  url: ${REPO_URL}
+  branch: main
+
+# Development environment
+devcontainer:
+  path: .devcontainer/devcontainer.json
+
+# Workspace resources
+resources:
+  cpu: 2
+  memory: 4Gi
+  disk: 20Gi
+
+# Environment variables
+env:
+  FLASK_ENV: development
+  PYTHONUNBUFFERED: "1"
+  API_PORT: "8080"
+
+# Port forwarding
+ports:
+  - port: 8080
+    name: Backend API
+    public: true
+  - port: 3000
+    name: Frontend Dev
+    public: true
+
+# Lifecycle hooks
+lifecycle:
+  postCreate:
+    - pip install -r requirements.txt
+  postStart:
+    - python app.py &
+
+# IDE configuration
+ide:
+  default: vscode
+  extensions:
+    - ms-python.python
+    - ms-python.vscode-pylance

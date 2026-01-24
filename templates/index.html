@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investment Scorer - Stock Analysis Tool</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 0;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            color: #8892b0;
+            font-size: 1.1rem;
+        }
+
+        .search-box {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 15px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .input-group input {
+            flex: 1;
+            padding: 15px 25px;
+            font-size: 1.1rem;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            outline: none;
+            text-transform: uppercase;
+        }
+
+        .input-group input::placeholder {
+            color: #8892b0;
+            text-transform: none;
+        }
+
+        .input-group button {
+            padding: 15px 35px;
+            font-size: 1.1rem;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            color: #1a1a2e;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .input-group button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 217, 255, 0.4);
+        }
+
+        .input-group button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #00d9ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+        }
+
+        .results.active {
+            display: block;
+        }
+
+        .error {
+            background: rgba(255, 82, 82, 0.2);
+            border: 1px solid #ff5252;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            color: #ff5252;
+        }
+
+        .score-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .company-info {
+            margin-bottom: 30px;
+        }
+
+        .company-info h2 {
+            font-size: 2rem;
+            margin-bottom: 5px;
+        }
+
+        .company-info .ticker {
+            color: #00d9ff;
+            font-size: 1.2rem;
+        }
+
+        .company-info .sector {
+            color: #8892b0;
+            font-size: 0.95rem;
+            margin-top: 5px;
+        }
+
+        .score-display {
+            margin: 30px 0;
+        }
+
+        .score-circle {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            font-weight: bold;
+            position: relative;
+            background: conic-gradient(var(--score-color) calc(var(--score) * 3.6deg), rgba(255, 255, 255, 0.1) 0);
+        }
+
+        .score-circle::before {
+            content: '';
+            position: absolute;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: #1a1a2e;
+        }
+
+        .score-circle span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .recommendation {
+            font-size: 1.5rem;
+            font-weight: bold;
+            padding: 10px 30px;
+            border-radius: 30px;
+            display: inline-block;
+            margin-top: 10px;
+        }
+
+        .recommendation.strong-buy { background: linear-gradient(90deg, #00c853, #69f0ae); color: #1a1a2e; }
+        .recommendation.buy { background: #4caf50; color: #fff; }
+        .recommendation.hold { background: #ff9800; color: #1a1a2e; }
+        .recommendation.sell { background: #f44336; color: #fff; }
+        .recommendation.strong-sell { background: linear-gradient(90deg, #d32f2f, #ff5252); color: #fff; }
+
+        .price-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .price-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .price-card h3 {
+            font-size: 1rem;
+            color: #8892b0;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .price-card .current-price {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #00d9ff;
+        }
+
+        .price-targets {
+            margin-top: 20px;
+        }
+
+        .target-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .target-row:last-child {
+            border-bottom: none;
+        }
+
+        .target-row .label {
+            color: #8892b0;
+        }
+
+        .target-row .value {
+            font-weight: bold;
+        }
+
+        .target-row .value.green { color: #4caf50; }
+        .target-row .value.red { color: #f44336; }
+
+        .indicators-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .indicator-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .indicator-card .name {
+            color: #8892b0;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .indicator-card .value {
+            font-size: 1.4rem;
+            font-weight: bold;
+        }
+
+        .indicator-card .score-bar {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .indicator-card .score-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+
+        .fundamentals {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .fundamentals h3 {
+            font-size: 1rem;
+            color: #8892b0;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .fundamentals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+        }
+
+        .fundamental-item {
+            text-align: center;
+        }
+
+        .fundamental-item .label {
+            color: #8892b0;
+            font-size: 0.85rem;
+            margin-bottom: 5px;
+        }
+
+        .fundamental-item .value {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .disclaimer {
+            margin-top: 40px;
+            padding: 20px;
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 10px;
+            font-size: 0.85rem;
+            color: #ffb74d;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            header h1 { font-size: 1.8rem; }
+            .input-group { flex-direction: column; }
+            .score-circle { width: 140px; height: 140px; font-size: 3rem; }
+            .score-circle::before { width: 110px; height: 110px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Investment Scorer</h1>
+            <p>AI-Powered Stock & ETF Analysis Using Multiple Technical Indicators</p>
+        </header>
+
+        <div class="search-box">
+            <div class="input-group">
+                <input type="text" id="ticker-input" placeholder="Enter ticker symbol (e.g., AAPL, SPY)" maxlength="10">
+                <button id="analyze-btn" onclick="analyzeStock()">Analyze</button>
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Analyzing stock data and calculating indicators...</p>
+        </div>
+
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        document.getElementById('ticker-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                analyzeStock();
+            }
+        });
+
+        function formatNumber(num) {
+            if (num >= 1e12) return (num / 1e12).toFixed(2) + 'T';
+            if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+            if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+            return num.toLocaleString();
+        }
+
+        function getScoreColor(score) {
+            if (score >= 70) return '#4caf50';
+            if (score >= 55) return '#8bc34a';
+            if (score >= 45) return '#ff9800';
+            if (score >= 30) return '#ff5722';
+            return '#f44336';
+        }
+
+        function getRecommendationClass(rec) {
+            return rec.toLowerCase().replace(' ', '-');
+        }
+
+        function getIndicatorColor(score) {
+            if (score >= 60) return '#4caf50';
+            if (score >= 40) return '#ff9800';
+            return '#f44336';
+        }
+
+        async function analyzeStock() {
+            const ticker = document.getElementById('ticker-input').value.trim();
+            if (!ticker) {
+                alert('Please enter a ticker symbol');
+                return;
+            }
+
+            const btn = document.getElementById('analyze-btn');
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+
+            btn.disabled = true;
+            loading.classList.add('active');
+            results.classList.remove('active');
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    results.innerHTML = `<div class="error">${data.error}</div>`;
+                } else {
+                    displayResults(data);
+                }
+
+                results.classList.add('active');
+            } catch (error) {
+                results.innerHTML = `<div class="error">Error analyzing stock. Please try again.</div>`;
+                results.classList.add('active');
+            } finally {
+                btn.disabled = false;
+                loading.classList.remove('active');
+            }
+        }
+
+        function displayResults(data) {
+            const scoreColor = getScoreColor(data.score);
+            const recClass = getRecommendationClass(data.recommendation);
+
+            const indicatorNames = {
+                'rsi': 'RSI',
+                'macd': 'MACD',
+                'bollinger': 'Bollinger Bands',
+                'stochastic': 'Stochastic',
+                'williams_r': 'Williams %R',
+                'cci': 'CCI',
+                'moving_avg': 'Moving Averages',
+                'vix': 'VIX Sentiment',
+                'obv': 'Volume (OBV)'
+            };
+
+            let indicatorsHTML = '';
+            for (const [key, score] of Object.entries(data.individual_scores)) {
+                const color = getIndicatorColor(score);
+                indicatorsHTML += `
+                    <div class="indicator-card">
+                        <div class="name">${indicatorNames[key] || key}</div>
+                        <div class="value" style="color: ${color}">${score.toFixed(1)}</div>
+                        <div class="score-bar">
+                            <div class="score-bar-fill" style="width: ${score}%; background: ${color}"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const isLong = data.action === 'long';
+            const priceTargetsHTML = isLong ? `
+                <div class="target-row">
+                    <span class="label">Take Profit Target</span>
+                    <span class="value green">$${data.price_targets.long_take_profit}</span>
+                </div>
+                <div class="target-row">
+                    <span class="label">Stop Loss</span>
+                    <span class="value red">$${data.price_targets.long_stop_loss}</span>
+                </div>
+            ` : `
+                <div class="target-row">
+                    <span class="label">Cover Short Target</span>
+                    <span class="value green">$${data.price_targets.short_cover}</span>
+                </div>
+                <div class="target-row">
+                    <span class="label">Stop Loss (Buy to Cover)</span>
+                    <span class="value red">$${data.price_targets.short_stop_loss}</span>
+                </div>
+            `;
+
+            document.getElementById('results').innerHTML = `
+                <div class="score-card">
+                    <div class="company-info">
+                        <h2>${data.company_name}</h2>
+                        <div class="ticker">${data.ticker}</div>
+                        <div class="sector">${data.sector} - ${data.industry}</div>
+                    </div>
+                    <div class="score-display">
+                        <div class="score-circle" style="--score: ${data.score}; --score-color: ${scoreColor}">
+                            <span>${data.score}</span>
+                        </div>
+                        <p style="color: #8892b0; margin-bottom: 10px;">Investment Score (1-100)</p>
+                        <div class="recommendation ${recClass}">${data.recommendation}</div>
+                    </div>
+                </div>
+
+                <div class="price-section">
+                    <div class="price-card">
+                        <h3>Current Price</h3>
+                        <div class="current-price">$${data.current_price}</div>
+                        <div class="price-targets">
+                            <div class="target-row">
+                                <span class="label">52-Week High</span>
+                                <span class="value">$${data.fundamentals['52_week_high']}</span>
+                            </div>
+                            <div class="target-row">
+                                <span class="label">52-Week Low</span>
+                                <span class="value">$${data.fundamentals['52_week_low']}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="price-card">
+                        <h3>${isLong ? 'Long Position Targets' : 'Short Position Targets'}</h3>
+                        <div class="price-targets">
+                            ${priceTargetsHTML}
+                            <div class="target-row">
+                                <span class="label">ATR (Volatility)</span>
+                                <span class="value">$${data.indicators.ATR}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 style="margin-bottom: 15px; color: #8892b0; text-transform: uppercase; letter-spacing: 1px;">Individual Indicator Scores</h3>
+                <div class="indicators-grid">
+                    ${indicatorsHTML}
+                </div>
+
+                <div class="fundamentals">
+                    <h3>Key Technical Indicators</h3>
+                    <div class="fundamentals-grid">
+                        <div class="fundamental-item">
+                            <div class="label">RSI (14)</div>
+                            <div class="value">${data.indicators.RSI}</div>
+                        </div>
+                        <div class="fundamental-item">
+                            <div class="label">MACD</div>
+                            <div class="value">${data.indicators.MACD}</div>
+                        </div>
+                        <div class="fundamental-item">
+                            <div class="label">Stochastic %K</div>
+                            <div class="value">${data.indicators.Stochastic_K}</div>
+                        </div>
+                        <div class="fundamental-item">
+                            <div class="label">Williams %R</div>
+                            <div class="value">${data.indicators.Williams_R}</div>
+                        </div>
+                        <div class="fundamental-item">
+                            <div class="label">CCI</div>
+                            <div class="value">${data.indicators.CCI}</div>
+                        </div>
+                        <div class="fundamental-item">
+                            <div class="label">VIX</div>
+                            <div class="value">${data.indicators.VIX}</div>
+                        </div>
+                        <div class="fundamental-item">
+                            <div class="label">SMA 20</div>
+                            <div class="value">$${data.indicators.SMA_20}</div>
+                        </div>
+                        <div class="fundamental-item">
+                            <div class="label">SMA 50</div>
+                            <div class="value">$${data.indicators.SMA_50}</div>
+                        </div>
+                        <div class="fundamental-item">
+                            <div class="label">SMA 200</div>
+                            <div class="value">$${data.indicators.SMA_200}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="fundamentals" style="margin-top: 20px;">
+                    <h3>Fundamentals</h3>
+                    <div class="fundamentals-grid">
+                        <div class="fundamental-item">
+                            <div class="label">Market Cap</div>
+                            <div class="value">${data.fundamentals.market_cap ? '$' + formatNumber(data.fundamentals.market_cap) : 'N/A'}</div>
+                        </div>
+                        <div class="fundamental-item">
+                            <div class="label">P/E Ratio</div>
+                            <div class="value">${typeof data.fundamentals.pe_ratio === 'number' ? data.fundamentals.pe_ratio.toFixed(2) : 'N/A'}</div>
+                        </div>
+                        <div class="fundamental-item">
+                            <div class="label">Dividend Yield</div>
+                            <div class="value">${data.fundamentals.dividend_yield}%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="disclaimer">
+                    <strong>Disclaimer:</strong> This tool is for educational purposes only. The investment score and recommendations are based on technical analysis and should not be considered financial advice. Always do your own research and consult with a qualified financial advisor before making investment decisions.
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

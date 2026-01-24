@@ -9,9 +9,6 @@ on:
 jobs:
   test-python:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/core
     steps:
       - uses: actions/checkout@v4
 
@@ -24,61 +21,29 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -r requirements.txt
 
-      - name: Lint with ruff
-        run: ruff check .
+      - name: Check syntax
+        run: python -m py_compile app.py
 
-      - name: Type check with mypy
-        run: mypy signalops --ignore-missing-imports
+      - name: Test imports
+        run: |
+          python -c "from flask import Flask; print('Flask OK')"
+          python -c "import yfinance; print('yfinance OK')"
+          python -c "import pandas; print('pandas OK')"
+          python -c "import numpy; print('numpy OK')"
 
-      - name: Run tests
-        run: pytest tests/ -v --cov=signalops --cov-report=xml
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
-
-  test-web:
+  docker-build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/web
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: apps/web/package-lock.json
+      - name: Build Docker image
+        run: docker build -t investment-scorer .
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Prisma client
-        run: npx prisma generate
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Type check
-        run: npx tsc --noEmit
-
-      - name: Build
-        run: npm run build
-        env:
-          DATABASE_URL: "file:./test.db"
-
-  coderabbit:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-      - name: CodeRabbit Review
-        uses: coderabbit-hq/ai-pr-reviewer@latest
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Test container starts
+        run: |
+          docker run -d --name test-app -p 8080:8080 investment-scorer
+          sleep 5
+          curl -f http://localhost:8080/health || exit 1
+          docker stop test-app

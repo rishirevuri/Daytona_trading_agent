@@ -4,124 +4,166 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SignalOps is a reproducible stock market prediction research platform. It combines a Python backtesting engine with a Next.js dashboard for running and analyzing trading strategy experiments in isolated Daytona sandboxes.
+Investment Scorer is an AI-powered real-time stock analysis platform. It provides investment scoring based on technical and fundamental indicators, with market sentiment analysis and stock screening capabilities.
 
-**Key principle**: Paper trading only, no live trades, full audit trails.
+**Key principle**: Real-time analysis, stateless architecture, paper trading only.
 
-## Monorepo Structure
+## Project Structure
 
-- `apps/web/` - Next.js 14 frontend with App Router
-- `packages/core/` - Python backtesting engine (signalops)
+```
+/
+├── app.py                    # Flask backend (core logic - all analysis endpoints)
+├── requirements.txt          # Python dependencies
+├── Dockerfile               # Container configuration
+├── docker-compose.yml       # Service orchestration
+├── .daytona/
+│   └── config.yaml          # Daytona cloud workspace config
+├── .devcontainer/
+│   └── devcontainer.json    # Dev container configuration
+├── templates/
+│   └── index.html           # Main SPA template
+├── static/                  # Static assets
+└── frontend/                # React frontend (optional)
+    ├── package.json
+    └── src/
+```
 
 ## Common Commands
 
-### Python Core (`packages/core/`)
+### Backend Development
 
 ```bash
-# Run all tests with coverage
-cd packages/core && PYTHONPATH=. python -m pytest tests/ -v
+# Install dependencies
+pip install -r requirements.txt
 
-# Run a single test file
-cd packages/core && PYTHONPATH=. python -m pytest tests/test_metrics.py -v
+# Run the Flask server
+python app.py
+# Server starts on http://localhost:8080
 
-# Run a specific test
-cd packages/core && PYTHONPATH=. python -m pytest tests/test_metrics.py::TestSharpeRatio::test_sharpe_positive -v
-
-# Lint with ruff
-cd packages/core && ruff check .
-
-# Type check
-cd packages/core && mypy signalops --ignore-missing-imports
-
-# Run CLI
-cd packages/core && python -m signalops.cli --help
+# Run with environment variable for ElevenLabs (optional)
+ELEVENLABS_API_KEY=your_key python app.py
 ```
 
-### Next.js Web (`apps/web/`)
+### Docker Development
 
 ```bash
-# Development server
-cd apps/web && npm run dev
+# Build and run with Docker Compose
+docker-compose up --build
 
-# Build
-cd apps/web && npm run build
+# Run in detached mode
+docker-compose up -d
 
-# Lint
-cd apps/web && npm run lint
+# View logs
+docker-compose logs -f
 
-# Type check
-cd apps/web && npx tsc --noEmit
+# Stop services
+docker-compose down
+```
 
-# Database commands
-cd apps/web && npx prisma db push      # Apply schema
-cd apps/web && npx prisma generate     # Generate client
-cd apps/web && npx prisma studio       # Visual editor
+### Frontend Development (if using React)
+
+```bash
+cd frontend
+npm install
+npm start
+# Development server on http://localhost:3000
+
+npm run build
+# Builds to frontend/build/ for production
+```
+
+### Daytona Deployment
+
+```bash
+# Create a new Daytona workspace
+daytona create .
+
+# Or from GitHub
+daytona create https://github.com/YOUR_USERNAME/Daytona_trading_agent
 ```
 
 ## Architecture
 
-### Python Backtesting Engine
+### Flask Backend (`app.py`)
 
-The `signalops` package in `packages/core/` provides:
+The entire backend is in a single `app.py` file with these components:
 
-- **`backtest/engine.py`** - Vectorized backtesting using vectorbt. The `BacktestEngine` class runs strategies against historical data and produces `BacktestResult` objects with returns, positions, and metrics.
+- **NewsAnalyzer class** - Fetches and analyzes stock news sentiment
+- **Investment scoring algorithm** - Combines technical (70%) and fundamental (30%) analysis
+- **Stock screener** - Scans universe of stocks for buy/sell signals
 
-- **`strategies/base.py`** - Abstract `Strategy` class that all strategies inherit from. Strategies implement `generate_signals(prices)` returning 1 (long), 0 (flat), -1 (short).
+### API Endpoints
 
-- **`strategies/moving_average.py`** - `MovingAverageCrossover` and `TripleMovingAverage` implementations.
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Serves the main SPA |
+| `/api/analyze` | POST | Analyze a single stock (body: `{"ticker": "AAPL"}`) |
+| `/api/screen` | GET | Screen stocks (query: `filter=strong_buys&limit=20`) |
+| `/api/market-sentiment` | GET | Get VIX, treasury yields, market data |
+| `/api/news/<ticker>` | GET | Get news for a specific ticker |
+| `/api/speak` | POST | Text-to-speech via ElevenLabs (optional) |
+| `/health` | GET | Health check endpoint |
 
-- **`metrics/performance.py`** - Performance calculations: Sharpe ratio, Sortino ratio, max drawdown, CAGR, win rate, profit factor.
+### Technical Indicators Used
 
-- **`metrics/overfit.py`** - Overfitting detection: Probability of Backtest Overfitting (PBO), Deflated Sharpe Ratio.
+The scoring algorithm analyzes 15+ indicators:
+- **RSI** - Relative Strength Index (14-period)
+- **MACD** - Moving Average Convergence Divergence
+- **Moving Averages** - SMA 20/50/200, Golden/Death Cross
+- **Bollinger Bands** - Price position within bands
+- **Stochastic** - Stochastic Oscillator
+- **Williams %R** - Overbought/oversold indicator
+- **CCI** - Commodity Channel Index
+- **ADX** - Average Directional Index (trend strength)
+- **MFI** - Money Flow Index
+- **OBV** - On-Balance Volume
+- **VWAP** - Volume Weighted Average Price
 
-- **`validation/leakage.py`** - Data leakage detection for strategy code analysis.
+### Score Interpretation
 
-- **`reports/generator.py`** - HTML report generation with equity curves, drawdown charts, monthly returns.
-
-- **`earnings/analyzer.py`** - Earnings call transcript sentiment analysis.
-
-### Next.js Dashboard
-
-The web app in `apps/web/` uses:
-
-- **Prisma ORM** with SQLite (dev) / Postgres (prod). Schema defines `Strategy`, `Run`, `Artifact`, `Log`, `DatasetVersion`.
-
-- **API Routes** at `app/api/`:
-  - `strategies/` - CRUD for strategies
-  - `strategies/[id]/runs/` - Trigger backtest runs
-  - `runs/[id]/logs/` - SSE log streaming
-  - `runs/[id]/artifacts/` - Download results
-  - `runs/[id]/reproduce/` - Re-run from snapshot
-
-- **Daytona Integration** (`lib/daytona.ts`) - Creates isolated sandboxes for running backtests. Uses dynamic import since `@daytonaio/sdk` is optional.
-
-- **Sentry Integration** - Performance tracing for backtest runs with custom metrics (sharpe_oos, max_drawdown, pbo).
-
-- **GitHub Integration** (`lib/github.ts`) - Creates PRs with experiment results using Octokit.
+| Score | Recommendation | Action |
+|-------|---------------|--------|
+| 75-100 | STRONG BUY | Long with high confidence |
+| 60-74 | BUY | Long with medium confidence |
+| 45-59 | HOLD | Wait for clearer signals |
+| 30-44 | SELL | Short with medium confidence |
+| 1-29 | STRONG SELL | Short with high confidence |
 
 ## Environment Variables
 
-Required variables (see `.env.example`):
-- `DAYTONA_API_KEY` - For sandbox execution
-- `SENTRY_DSN` / `SENTRY_AUTH_TOKEN` - For observability
-- `GITHUB_TOKEN` - For PR creation
-- `DATABASE_URL` - Prisma database connection
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ELEVENLABS_API_KEY` | No | For text-to-speech feature |
+| `ELEVENLABS_VOICE_ID` | No | Voice ID for TTS (default: Adam) |
+| `FLASK_ENV` | No | Set to `development` for debug mode |
+| `API_PORT` | No | Port to run server (default: 8080) |
 
-## CodeRabbit Integration
+## Data Sources
 
-The `.coderabbit.yaml` configures automated code review with special attention to:
-- Lookahead bias in backtests
-- Data leakage patterns
-- Transaction cost assumptions
-- Reproducibility (fixed seeds, versioned data)
-- Train/test temporal separation
+All data is fetched in real-time via `yfinance`:
+- Historical price data for technical analysis
+- Fundamental data (P/E, margins, growth rates)
+- News and analyst recommendations
+- Earnings calendar and surprises
 
-## Data Flow
+## Dependencies
 
-1. User creates strategy via dashboard or API
-2. User triggers run → API creates `Run` record with status "pending"
-3. Backend creates Daytona sandbox, uploads strategy code
-4. Backtest executes in sandbox, logs stream via SSE
-5. Results collected: metrics.json, returns.csv, report.html
-6. Sandbox snapshot saved for reproducibility
-7. PR created on GitHub with results (optional)
+Core Python packages:
+- `flask` - Web framework
+- `flask-cors` - CORS support
+- `yfinance` - Yahoo Finance data
+- `pandas` - Data manipulation
+- `numpy` - Numerical computing
+- `requests` - HTTP client
+
+## Stateless Architecture
+
+The application is completely stateless:
+- No database required
+- All analysis is computed on-demand
+- Results are not persisted
+- Each request is independent
+
+## Disclaimer
+
+This tool is for educational purposes only. Investment scores and recommendations are based on technical and fundamental analysis and should not be considered financial advice.

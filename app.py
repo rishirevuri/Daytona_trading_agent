@@ -54,8 +54,8 @@ class TickerCache:
             self._cache.clear()
 
 
-# Global cache instance
-_ticker_cache = TickerCache(default_ttl=300)  # 5 minute cache
+# Global cache instance - 15 min default TTL to reduce rate limiting
+_ticker_cache = TickerCache(default_ttl=900)
 
 
 def get_cached_ticker(symbol):
@@ -72,7 +72,7 @@ def get_cached_history(symbol, period="1y"):
 
     ticker = yf.Ticker(symbol)
     hist = ticker.history(period=period)
-    _ticker_cache.set(cache_key, hist)
+    _ticker_cache.set(cache_key, hist, ttl=900)  # 15 min cache
     return hist
 
 
@@ -85,7 +85,7 @@ def get_cached_info(symbol):
 
     ticker = yf.Ticker(symbol)
     info = ticker.info
-    _ticker_cache.set(cache_key, info)
+    _ticker_cache.set(cache_key, info, ttl=1800)  # 30 min cache for info
     return info
 
 
@@ -102,12 +102,49 @@ def get_cached_news(symbol):
     return news
 
 
+def get_cached_calendar(symbol):
+    """Get cached calendar (earnings dates) for a ticker"""
+    cache_key = f"calendar_{symbol}"
+    cached = _ticker_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        ticker = yf.Ticker(symbol)
+        calendar = ticker.calendar
+        _ticker_cache.set(cache_key, calendar, ttl=1800)  # 30 min cache for calendar
+        return calendar
+    except:
+        _ticker_cache.set(cache_key, None, ttl=1800)  # Cache failures too
+        return None
+
+
 def clear_cache():
     """Clear all cached data"""
     _ticker_cache.clear()
 
 
 # ============== END CACHING SYSTEM ==============
+
+# ============== INDEX SYMBOL NORMALIZATION ==============
+# Index symbols that require the ^ prefix for Yahoo Finance API
+INDEX_SYMBOLS = {'DJI', 'GSPC', 'IXIC', 'RUT', 'VIX', 'TNX', 'TYX', 'FVX', 'IRX'}
+
+
+def normalize_ticker(ticker):
+    """Normalize ticker symbol - add ^ prefix for index symbols if missing"""
+    ticker_upper = ticker.upper().strip()
+    # If it already has ^, return as-is
+    if ticker_upper.startswith('^'):
+        return ticker_upper
+    # If it's a known index symbol without ^, add it
+    if ticker_upper in INDEX_SYMBOLS:
+        return f'^{ticker_upper}'
+    return ticker_upper
+
+
+# ============== END INDEX SYMBOL NORMALIZATION ==============
+
 CORS(app)
 
 # ElevenLabs Configuration
@@ -150,6 +187,475 @@ SCREENING_UNIVERSE = [
     'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'VOO', 'ARKK', 'XLF', 'XLE', 'XLK',
     'GLD', 'SLV', 'TLT', 'HYG', 'EEM', 'VWO', 'IEMG', 'VEA', 'EFA', 'SOXL'
 ]
+
+# Penny stock universe - higher risk, speculative stocks often under $5
+PENNY_STOCK_UNIVERSE = [
+    'SNDL', 'CLOV', 'WISH', 'BB', 'NOK', 'SOFI', 'LCID', 'NIO', 'XPEV',
+    'AMC', 'OPEN', 'RKT', 'SKLZ', 'SPCE', 'GEVO', 'IDEX', 'MVIS',
+    'OCGN', 'SENS', 'TLRY', 'ZOM', 'PLUG', 'FCEL', 'BLNK', 'WKHS',
+    'RIDE', 'NAKD', 'SAVA', 'BNGO', 'UUUU', 'DNA', 'IONQ', 'RKLB', 'JOBY'
+]
+
+
+# ============== TRADING SIMULATOR ==============
+# Paper trading simulator with AI-driven decisions based on investment scores
+
+class TradingSimulator:
+    """
+    Paper trading simulator with $100,000 virtual capital.
+    Uses investment scores to make AI-driven trading decisions.
+    """
+
+    INITIAL_CAPITAL = 100000.0
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        """Reset simulation to initial state"""
+        self.cash = self.INITIAL_CAPITAL
+        self.positions = {}  # {ticker: {quantity, avg_price, side, entry_date}}
+        self.trade_log = []  # List of executed trades
+        self.portfolio_history = []  # {timestamp, total_value, spy_price}
+        self.spy_start_price = None
+        self._record_initial_snapshot()
+
+    def _record_initial_snapshot(self):
+        """Record initial portfolio state with SPY benchmark"""
+        try:
+            spy = yf.Ticker('SPY')
+            spy_hist = spy.history(period='1d')
+            if not spy_hist.empty:
+                self.spy_start_price = spy_hist['Close'].iloc[-1]
+        except:
+            self.spy_start_price = 500.0  # Fallback
+
+        self.portfolio_history.append({
+            'timestamp': datetime.now().isoformat(),
+            'total_value': self.cash,
+            'spy_price': self.spy_start_price,
+            'cash': self.cash,
+            'positions_value': 0
+        })
+
+    def get_current_price(self, ticker):
+        """Get current price for a ticker"""
+        try:
+            hist = get_cached_history(ticker, period='1d')
+            if not hist.empty:
+                return hist['Close'].iloc[-1]
+        except:
+            pass
+        return None
+
+    def get_portfolio_value(self):
+        """Calculate total portfolio value (cash + positions)"""
+        positions_value = 0
+        position_details = []
+
+        for ticker, pos in self.positions.items():
+            current_price = self.get_current_price(ticker)
+            if current_price:
+                if pos['side'] == 'long':
+                    value = pos['quantity'] * current_price
+                    pnl = (current_price - pos['avg_price']) * pos['quantity']
+                else:  # short
+                    # For shorts: profit when price goes down
+                    value = pos['quantity'] * pos['avg_price']  # Collateral held
+                    pnl = (pos['avg_price'] - current_price) * pos['quantity']
+
+                positions_value += value
+                pnl_pct = (pnl / (pos['avg_price'] * pos['quantity'])) * 100 if pos['avg_price'] > 0 else 0
+
+                position_details.append({
+                    'ticker': ticker,
+                    'side': pos['side'],
+                    'quantity': pos['quantity'],
+                    'avg_price': round(pos['avg_price'], 2),
+                    'current_price': round(current_price, 2),
+                    'value': round(value, 2),
+                    'pnl': round(pnl, 2),
+                    'pnl_pct': round(pnl_pct, 2),
+                    'entry_date': pos.get('entry_date', 'N/A')
+                })
+
+        total_value = self.cash + positions_value
+        return total_value, positions_value, position_details
+
+    def execute_trade(self, trade_type, ticker, quantity, price, reasoning, side='long'):
+        """
+        Execute a trade and log it.
+        trade_type: 'buy', 'sell', 'short', 'cover'
+        """
+        timestamp = datetime.now().isoformat()
+        trade_value = quantity * price
+
+        trade = {
+            'timestamp': timestamp,
+            'type': trade_type,
+            'ticker': ticker,
+            'side': side,
+            'quantity': quantity,
+            'price': round(price, 2),
+            'value': round(trade_value, 2),
+            'reasoning': reasoning
+        }
+
+        if trade_type == 'buy':
+            if trade_value > self.cash:
+                trade['status'] = 'rejected'
+                trade['error'] = 'Insufficient funds'
+            else:
+                self.cash -= trade_value
+                if ticker in self.positions:
+                    # Average up/down
+                    old_qty = self.positions[ticker]['quantity']
+                    old_avg = self.positions[ticker]['avg_price']
+                    new_qty = old_qty + quantity
+                    new_avg = ((old_qty * old_avg) + (quantity * price)) / new_qty
+                    self.positions[ticker]['quantity'] = new_qty
+                    self.positions[ticker]['avg_price'] = new_avg
+                else:
+                    self.positions[ticker] = {
+                        'quantity': quantity,
+                        'avg_price': price,
+                        'side': 'long',
+                        'entry_date': timestamp
+                    }
+                trade['status'] = 'executed'
+                trade['cash_after'] = round(self.cash, 2)
+
+        elif trade_type == 'sell':
+            if ticker not in self.positions or self.positions[ticker]['side'] != 'long':
+                trade['status'] = 'rejected'
+                trade['error'] = 'No long position to sell'
+            elif self.positions[ticker]['quantity'] < quantity:
+                trade['status'] = 'rejected'
+                trade['error'] = 'Insufficient shares'
+            else:
+                self.cash += trade_value
+                self.positions[ticker]['quantity'] -= quantity
+                if self.positions[ticker]['quantity'] == 0:
+                    del self.positions[ticker]
+                trade['status'] = 'executed'
+                trade['cash_after'] = round(self.cash, 2)
+
+        elif trade_type == 'short':
+            # Short selling - borrow and sell
+            if trade_value > self.cash * 2:  # 50% margin requirement
+                trade['status'] = 'rejected'
+                trade['error'] = 'Insufficient margin'
+            else:
+                self.cash -= trade_value * 0.5  # Hold 50% as margin
+                if ticker in self.positions and self.positions[ticker]['side'] == 'short':
+                    old_qty = self.positions[ticker]['quantity']
+                    old_avg = self.positions[ticker]['avg_price']
+                    new_qty = old_qty + quantity
+                    new_avg = ((old_qty * old_avg) + (quantity * price)) / new_qty
+                    self.positions[ticker]['quantity'] = new_qty
+                    self.positions[ticker]['avg_price'] = new_avg
+                else:
+                    self.positions[ticker] = {
+                        'quantity': quantity,
+                        'avg_price': price,
+                        'side': 'short',
+                        'entry_date': timestamp
+                    }
+                trade['status'] = 'executed'
+                trade['cash_after'] = round(self.cash, 2)
+
+        elif trade_type == 'cover':
+            # Cover short position
+            if ticker not in self.positions or self.positions[ticker]['side'] != 'short':
+                trade['status'] = 'rejected'
+                trade['error'] = 'No short position to cover'
+            else:
+                pos = self.positions[ticker]
+                cover_qty = min(quantity, pos['quantity'])
+                # Return margin + profit/loss
+                margin_return = cover_qty * pos['avg_price'] * 0.5
+                pnl = (pos['avg_price'] - price) * cover_qty
+                self.cash += margin_return + pnl
+
+                pos['quantity'] -= cover_qty
+                if pos['quantity'] == 0:
+                    del self.positions[ticker]
+
+                trade['quantity'] = cover_qty
+                trade['pnl'] = round(pnl, 2)
+                trade['status'] = 'executed'
+                trade['cash_after'] = round(self.cash, 2)
+
+        self.trade_log.append(trade)
+        return trade
+
+    def record_portfolio_snapshot(self):
+        """Record current portfolio state for history tracking"""
+        total_value, positions_value, _ = self.get_portfolio_value()
+
+        # Get current SPY price for benchmark
+        spy_price = self.spy_start_price
+        try:
+            spy_hist = get_cached_history('SPY', period='1d')
+            if not spy_hist.empty:
+                spy_price = spy_hist['Close'].iloc[-1]
+        except:
+            pass
+
+        self.portfolio_history.append({
+            'timestamp': datetime.now().isoformat(),
+            'total_value': round(total_value, 2),
+            'spy_price': round(spy_price, 2) if spy_price else None,
+            'cash': round(self.cash, 2),
+            'positions_value': round(positions_value, 2)
+        })
+
+    def get_status(self):
+        """Get complete simulation status"""
+        total_value, positions_value, position_details = self.get_portfolio_value()
+        total_return = ((total_value - self.INITIAL_CAPITAL) / self.INITIAL_CAPITAL) * 100
+
+        # Calculate S&P 500 return for comparison
+        spy_return = 0
+        current_spy_price = None
+        try:
+            spy_hist = get_cached_history('SPY', period='1d')
+            if not spy_hist.empty:
+                current_spy_price = spy_hist['Close'].iloc[-1]
+                if self.spy_start_price:
+                    spy_return = ((current_spy_price - self.spy_start_price) / self.spy_start_price) * 100
+        except:
+            pass
+
+        alpha = total_return - spy_return
+
+        return {
+            'cash': round(self.cash, 2),
+            'positions_value': round(positions_value, 2),
+            'total_value': round(total_value, 2),
+            'initial_capital': self.INITIAL_CAPITAL,
+            'total_return': round(total_return, 2),
+            'total_return_dollars': round(total_value - self.INITIAL_CAPITAL, 2),
+            'spy_return': round(spy_return, 2),
+            'alpha': round(alpha, 2),
+            'spy_start_price': round(self.spy_start_price, 2) if self.spy_start_price else None,
+            'spy_current_price': round(current_spy_price, 2) if current_spy_price else None,
+            'positions': position_details,
+            'num_positions': len(self.positions),
+            'num_trades': len(self.trade_log),
+            'timestamp': datetime.now().isoformat()
+        }
+
+
+# Global trading simulator instance
+trading_sim = TradingSimulator()
+
+
+def is_market_open():
+    """Check if US stock market is currently open (9:30 AM - 4:00 PM ET, weekdays)"""
+    try:
+        import pytz
+        et = pytz.timezone('US/Eastern')
+        now = datetime.now(et)
+
+        # Check if weekend
+        if now.weekday() >= 5:
+            return False, "Market closed (weekend)"
+
+        # Check market hours (9:30 AM - 4:00 PM ET)
+        market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+        market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+
+        if market_open <= now <= market_close:
+            return True, "Market is open"
+        elif now < market_open:
+            return False, f"Market opens at 9:30 AM ET"
+        else:
+            return False, "Market closed for the day"
+    except ImportError:
+        # Fallback without pytz - assume market is open during reasonable hours
+        now = datetime.now()
+        if now.weekday() >= 5:
+            return False, "Market closed (weekend)"
+        if 9 <= now.hour < 16:
+            return True, "Market hours (estimated)"
+        return False, "Outside market hours (estimated)"
+
+
+def make_trading_decisions():
+    """
+    AI-driven trading decision engine.
+    Analyzes current positions and screens for opportunities.
+    """
+    executed_trades = []
+
+    # 1. Check existing positions for exit signals
+    for ticker, pos in list(trading_sim.positions.items()):
+        try:
+            score_data = calculate_investment_score(ticker)
+            if 'error' in score_data:
+                continue
+
+            score = score_data['score']
+            current_price = score_data['current_price']
+
+            if pos['side'] == 'long':
+                # Exit long if:
+                # - Score drops below 45 (no longer bullish)
+                # - Price hits target_2
+                # - Stop loss triggered
+                target_2 = score_data.get('price_targets', {}).get('long_target_2', 0)
+                stop_loss = score_data.get('price_targets', {}).get('long_stop_loss', 0)
+
+                should_exit = False
+                reason = ""
+
+                if score < 45:
+                    should_exit = True
+                    reason = f"Score dropped to {score} (below 45 threshold) - momentum weakening"
+                elif target_2 and current_price >= target_2:
+                    should_exit = True
+                    reason = f"Price ${current_price} hit target ${target_2} - taking profits"
+                elif stop_loss and current_price <= stop_loss:
+                    should_exit = True
+                    reason = f"Stop loss triggered at ${stop_loss} - cutting losses"
+
+                if should_exit:
+                    trade = trading_sim.execute_trade(
+                        'sell', ticker, pos['quantity'], current_price, reason
+                    )
+                    executed_trades.append(trade)
+
+            elif pos['side'] == 'short':
+                # Cover short if:
+                # - Score rises above 55 (becoming bullish)
+                # - Price hits short_target_2
+                # - Stop loss triggered
+                target_2 = score_data.get('price_targets', {}).get('short_target_2', 0)
+                stop_loss = score_data.get('price_targets', {}).get('short_stop_loss', 0)
+
+                should_cover = False
+                reason = ""
+
+                if score > 55:
+                    should_cover = True
+                    reason = f"Score rose to {score} (above 55) - trend reversing"
+                elif target_2 and current_price <= target_2:
+                    should_cover = True
+                    reason = f"Price ${current_price} hit target ${target_2} - taking profits"
+                elif stop_loss and current_price >= stop_loss:
+                    should_cover = True
+                    reason = f"Stop loss triggered at ${stop_loss} - cutting losses"
+
+                if should_cover:
+                    trade = trading_sim.execute_trade(
+                        'cover', ticker, pos['quantity'], current_price, reason, side='short'
+                    )
+                    executed_trades.append(trade)
+
+        except Exception as e:
+            continue
+
+    # 2. Screen for new opportunities
+    total_value, _, _ = trading_sim.get_portfolio_value()
+
+    # Screen for strong buys
+    try:
+        strong_buys = screen_stocks('strong_buys', 5)
+        for stock in strong_buys:
+            ticker = stock['ticker']
+
+            # Skip if already have a position
+            if ticker in trading_sim.positions:
+                continue
+
+            score = stock['score']
+            current_price = stock.get('current_price', 0)
+
+            if not current_price or current_price <= 0:
+                continue
+
+            # Position sizing based on score
+            if score >= 80:
+                position_pct = 0.15  # 15% for very high conviction
+            elif score >= 75:
+                position_pct = 0.10  # 10% for high conviction
+            else:
+                position_pct = 0.05  # 5% for moderate conviction
+
+            position_value = total_value * position_pct
+
+            # Ensure we have enough cash
+            if position_value > trading_sim.cash * 0.95:  # Keep 5% cash reserve
+                position_value = trading_sim.cash * 0.5  # Use half of available cash
+
+            if position_value < 100:  # Minimum position size
+                continue
+
+            quantity = int(position_value / current_price)
+            if quantity < 1:
+                continue
+
+            reason = f"STRONG BUY signal: Score {score}, {stock.get('recommendation', 'BUY')}. AI detected strong bullish technicals and fundamentals."
+
+            trade = trading_sim.execute_trade('buy', ticker, quantity, current_price, reason)
+            executed_trades.append(trade)
+
+    except Exception as e:
+        pass
+
+    # Screen for short candidates
+    try:
+        shorts = screen_stocks('shorts', 3)
+        for stock in shorts:
+            ticker = stock['ticker']
+
+            # Skip if already have a position
+            if ticker in trading_sim.positions:
+                continue
+
+            score = stock['score']
+            current_price = stock.get('current_price', 0)
+
+            if not current_price or current_price <= 0:
+                continue
+
+            # Shorts are riskier - smaller positions
+            if score < 25:
+                position_pct = 0.08  # 8% for very bearish
+            elif score < 35:
+                position_pct = 0.05  # 5% for bearish
+            else:
+                continue  # Score too high for shorting
+
+            position_value = total_value * position_pct
+
+            # Need 50% margin for shorts
+            if position_value * 0.5 > trading_sim.cash * 0.3:  # Use max 30% of cash for short margin
+                continue
+
+            if position_value < 100:
+                continue
+
+            quantity = int(position_value / current_price)
+            if quantity < 1:
+                continue
+
+            reason = f"SHORT signal: Score {score}, bearish indicators. AI detected weak technicals suggesting downside potential."
+
+            trade = trading_sim.execute_trade('short', ticker, quantity, current_price, reason, side='short')
+            executed_trades.append(trade)
+
+    except Exception as e:
+        pass
+
+    # Record portfolio snapshot after trading
+    trading_sim.record_portfolio_snapshot()
+
+    return executed_trades
+
+
+# ============== END TRADING SIMULATOR ==============
 
 
 class NewsAnalyzer:
@@ -256,8 +762,13 @@ class NewsAnalyzer:
 
     @staticmethod
     def fetch_market_news():
-        """Fetch aggregated market news from major indices"""
-        market_tickers = ['SPY', 'QQQ', 'DIA']
+        """Fetch aggregated market news from major indices and top stocks"""
+        # Include major indices and top market-moving stocks for better news coverage
+        market_tickers = [
+            'SPY', 'QQQ', 'DIA',  # Major indices
+            'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA',  # Tech giants
+            '^GSPC', '^DJI', '^IXIC'  # Index symbols
+        ]
         all_news = []
         seen_titles = set()
 
@@ -267,21 +778,44 @@ class NewsAnalyzer:
                 if news:
                     for item in news[:5]:
                         title = item.get('title', '')
-                        if title and title not in seen_titles:
-                            seen_titles.add(title)
-                            sentiment, _ = NewsAnalyzer.analyze_sentiment(title)
-                            all_news.append({
-                                'title': title,
-                                'publisher': item.get('publisher', ''),
-                                'link': item.get('link', ''),
-                                'published': datetime.fromtimestamp(
-                                    item.get('providerPublishTime', 0)
-                                ).strftime('%Y-%m-%d %H:%M'),
-                                'sentiment': sentiment
-                            })
-            except:
-                pass
+                        # Skip if no title or already seen
+                        if not title or title in seen_titles:
+                            continue
+                        # Skip if title is too short (likely not a real article)
+                        if len(title) < 20:
+                            continue
 
+                        seen_titles.add(title)
+                        sentiment, _ = NewsAnalyzer.analyze_sentiment(title)
+
+                        # Get publish time safely
+                        publish_time = item.get('providerPublishTime', 0)
+                        if publish_time:
+                            try:
+                                published_str = datetime.fromtimestamp(publish_time).strftime('%Y-%m-%d %H:%M')
+                            except:
+                                published_str = 'Recent'
+                        else:
+                            published_str = 'Recent'
+
+                        all_news.append({
+                            'title': title,
+                            'publisher': item.get('publisher', 'Unknown'),
+                            'link': item.get('link', '#'),
+                            'published': published_str,
+                            'sentiment': sentiment
+                        })
+
+                        # Stop once we have enough news
+                        if len(all_news) >= 20:
+                            break
+            except Exception as e:
+                continue
+
+            if len(all_news) >= 20:
+                break
+
+        # Sort by recency (most recent first) and return top 15
         return all_news[:15]
 
 
@@ -771,6 +1305,278 @@ def get_daily_movers():
         'gainers': valid[:10],
         'losers': list(reversed(valid[-10:]))
     }
+
+
+def get_market_indexes():
+    """Get major market index performance (cached)"""
+    cache_key = "market_indexes"
+    cached = _ticker_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    indexes = {
+        '^GSPC': 'S&P 500',
+        '^DJI': 'Dow Jones',
+        '^IXIC': 'NASDAQ',
+        'SPY': 'SPY',
+        'QQQ': 'QQQ',
+        '^RUT': 'Russell 2000'
+    }
+
+    results = []
+    for symbol, name in indexes.items():
+        try:
+            hist = get_cached_history(symbol, period="5d")
+            if len(hist) >= 2:
+                current_price = hist['Close'].iloc[-1]
+                prev_close = hist['Close'].iloc[-2]
+                change = current_price - prev_close
+                change_pct = ((current_price - prev_close) / prev_close) * 100
+
+                results.append({
+                    'symbol': symbol,
+                    'name': name,
+                    'price': round(current_price, 2),
+                    'change': round(change, 2),
+                    'change_pct': round(change_pct, 2)
+                })
+        except Exception as e:
+            results.append({
+                'symbol': symbol,
+                'name': name,
+                'price': None,
+                'change': None,
+                'change_pct': None
+            })
+
+    _ticker_cache.set(cache_key, results, ttl=300)  # 5 min cache
+    return results
+
+
+def get_earnings_calendar():
+    """Get stocks with upcoming earnings - uses cached data to avoid rate limiting"""
+    cache_key = "earnings_calendar"
+    cached = _ticker_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    results = []
+    today = datetime.now()
+    today_date = today.date()
+
+    def check_earnings(ticker):
+        try:
+            # Use cached functions to avoid rate limiting
+            info = get_cached_info(ticker) or {}
+            company_name = info.get('longName', info.get('shortName', ticker))
+            sector = info.get('sector', 'N/A')
+            industry = info.get('industry', 'N/A')
+            current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+
+            earnings_dt = None
+            earnings_time = 'TBD'
+
+            # Method 1: Check cached calendar (most reliable)
+            try:
+                calendar = get_cached_calendar(ticker)
+                if calendar is not None:
+                    ed = None
+                    # Handle dict format (most common from yfinance)
+                    if isinstance(calendar, dict) and 'Earnings Date' in calendar:
+                        ed = calendar['Earnings Date']
+                        if isinstance(ed, list) and len(ed) > 0:
+                            ed = ed[0]
+                    # Handle DataFrame with columns
+                    elif hasattr(calendar, 'columns') and 'Earnings Date' in calendar.columns:
+                        ed = calendar['Earnings Date'].iloc[0]
+                    # Handle DataFrame with index
+                    elif hasattr(calendar, 'index') and 'Earnings Date' in calendar.index:
+                        ed = calendar.loc['Earnings Date']
+                        if hasattr(ed, 'iloc'):
+                            ed = ed.iloc[0]
+
+                    if ed is not None and (not hasattr(ed, 'isna') or not pd.isna(ed)):
+                        # Handle datetime.date object
+                        if hasattr(ed, 'year') and hasattr(ed, 'month') and hasattr(ed, 'day') and not hasattr(ed, 'hour'):
+                            earnings_dt = datetime.combine(ed, datetime.min.time())
+                        elif hasattr(ed, 'to_pydatetime'):
+                            earnings_dt = ed.to_pydatetime()
+                        elif isinstance(ed, str):
+                            earnings_dt = datetime.strptime(ed[:10], '%Y-%m-%d')
+                        elif isinstance(ed, datetime):
+                            earnings_dt = ed
+            except:
+                pass
+
+            # Method 2: Check info for earnings timestamps (fallback, uses cached info)
+            if earnings_dt is None:
+                try:
+                    if info.get('earningsTimestamp'):
+                        ts = info['earningsTimestamp']
+                        earnings_dt = datetime.fromtimestamp(ts)
+                    elif info.get('earningsTimestampStart'):
+                        ts = info['earningsTimestampStart']
+                        earnings_dt = datetime.fromtimestamp(ts)
+                except:
+                    pass
+
+            if earnings_dt is None:
+                return None
+
+            # Make timezone-naive if needed
+            if hasattr(earnings_dt, 'tzinfo') and earnings_dt.tzinfo is not None:
+                earnings_dt = earnings_dt.replace(tzinfo=None)
+
+            # Only include future earnings (within next 90 days)
+            days_until = (earnings_dt.date() - today_date).days
+            if days_until < 0 or days_until > 90:
+                return None
+
+            # Simplified prediction (no additional API calls)
+            prediction = 'NEUTRAL'
+
+            # Get current score using cached history
+            score = 50
+            try:
+                hist = get_cached_history(ticker, period="3mo")
+                if hist is not None and not hist.empty:
+                    rsi = TechnicalAnalyzer.calculate_rsi(hist['Close'])
+                    rsi_val = rsi.iloc[-1] if len(rsi) > 0 and not pd.isna(rsi.iloc[-1]) else 50
+                    if rsi_val < 30:
+                        score = 70
+                    elif rsi_val > 70:
+                        score = 30
+                    else:
+                        score = int(50 + (50 - rsi_val))
+            except:
+                pass
+
+            # Get market cap for display
+            market_cap = info.get('marketCap', 0)
+            market_cap_display = ''
+            if market_cap:
+                if market_cap >= 1e12:
+                    market_cap_display = f"${market_cap/1e12:.1f}T"
+                elif market_cap >= 1e9:
+                    market_cap_display = f"${market_cap/1e9:.1f}B"
+                elif market_cap >= 1e6:
+                    market_cap_display = f"${market_cap/1e6:.0f}M"
+                else:
+                    market_cap_display = f"${market_cap:,.0f}"
+
+            return {
+                'ticker': ticker,
+                'company_name': company_name,
+                'sector': sector,
+                'industry': industry,
+                'current_price': round(current_price, 2) if current_price else 0,
+                'market_cap': market_cap_display,
+                'earnings_date': earnings_dt.strftime('%Y-%m-%d'),
+                'earnings_time': earnings_time,
+                'days_until': days_until,
+                'prev_surprise_pct': 0,
+                'prev_eps_actual': None,
+                'prev_eps_estimate': None,
+                'last_earnings_date': None,
+                'earnings_history': [],
+                'prediction': prediction,
+                'score': score
+            }
+        except:
+            pass
+        return None
+
+    # Use fewer workers to reduce rate limiting
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(check_earnings, ticker): ticker for ticker in SCREENING_UNIVERSE}
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                results.append(result)
+
+    # Sort by days until earnings
+    results.sort(key=lambda x: x['days_until'])
+
+    _ticker_cache.set(cache_key, results, ttl=1800)  # 30 min cache to reduce API calls
+    return results
+
+
+def get_penny_stocks():
+    """Analyze penny stocks (stocks under $5)"""
+    cache_key = "penny_stocks"
+    cached = _ticker_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    results = []
+
+    def analyze_penny(ticker):
+        try:
+            info = get_cached_info(ticker)
+            hist = get_cached_history(ticker, period="3mo")
+
+            if hist.empty:
+                return None
+
+            current_price = hist['Close'].iloc[-1]
+
+            # Filter for stocks under $5 (or include all from penny universe for analysis)
+            if current_price > 10:  # Allow up to $10 for formerly penny stocks
+                return None
+
+            company_name = info.get('longName', info.get('shortName', ticker))
+
+            # Calculate RSI
+            ta = TechnicalAnalyzer()
+            rsi = ta.calculate_rsi(hist['Close'])
+            rsi_val = round(rsi.iloc[-1], 2) if not pd.isna(rsi.iloc[-1]) else 50
+
+            # Calculate volatility (ATR as percentage)
+            atr = ta.calculate_atr(hist['High'], hist['Low'], hist['Close'])
+            volatility = round((atr.iloc[-1] / current_price) * 100, 2) if not pd.isna(atr.iloc[-1]) else 0
+
+            # Get volume
+            avg_volume = info.get('averageVolume', 0)
+
+            # Calculate investment score
+            try:
+                score_data = calculate_investment_score(ticker)
+                if 'error' not in score_data:
+                    score = score_data['score']
+                    recommendation = score_data['recommendation']
+                else:
+                    score = 50
+                    recommendation = 'HOLD'
+            except:
+                score = 50
+                recommendation = 'HOLD'
+
+            return {
+                'ticker': ticker,
+                'company_name': company_name,
+                'price': round(current_price, 2),
+                'score': score,
+                'recommendation': recommendation,
+                'rsi': rsi_val,
+                'volatility': volatility,
+                'volume': avg_volume
+            }
+        except Exception as e:
+            pass
+        return None
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(analyze_penny, ticker): ticker for ticker in PENNY_STOCK_UNIVERSE}
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                results.append(result)
+
+    # Sort by score descending
+    results.sort(key=lambda x: x['score'], reverse=True)
+
+    _ticker_cache.set(cache_key, results, ttl=600)  # 10 min cache
+    return results
 
 
 def get_earnings_data(ticker):
@@ -1744,17 +2550,78 @@ def calculate_investment_score(ticker_symbol):
 
 
 def screen_stocks(filter_type='all', limit=20):
-    """Screen stocks for strong buys or sells"""
+    """Screen stocks for strong buys or sells with detailed company info"""
     results = []
 
     def analyze_ticker(ticker):
         try:
             result = calculate_investment_score(ticker)
             if 'error' not in result:
+                # Get additional company info
+                info = get_cached_info(ticker)
+
+                # Get business description (truncate to ~300 chars for display)
+                description = info.get('longBusinessSummary', '')
+                if len(description) > 300:
+                    # Truncate at last complete sentence within limit
+                    description = description[:300]
+                    last_period = description.rfind('.')
+                    if last_period > 150:
+                        description = description[:last_period + 1]
+                    else:
+                        description = description[:297] + '...'
+
+                # Get company category/sub-industry
+                industry = info.get('industry', result.get('industry', 'N/A'))
+                sector = info.get('sector', result.get('sector', 'N/A'))
+
+                # Get key metrics for investors
+                market_cap = info.get('marketCap', 0)
+                employees = info.get('fullTimeEmployees', 0)
+                country = info.get('country', 'USA')
+
+                # Determine company size category
+                if market_cap >= 200e9:
+                    size_category = 'Mega Cap'
+                elif market_cap >= 10e9:
+                    size_category = 'Large Cap'
+                elif market_cap >= 2e9:
+                    size_category = 'Mid Cap'
+                elif market_cap >= 300e6:
+                    size_category = 'Small Cap'
+                else:
+                    size_category = 'Micro Cap'
+
+                # Format market cap for display
+                if market_cap >= 1e12:
+                    market_cap_display = f"${market_cap/1e12:.2f}T"
+                elif market_cap >= 1e9:
+                    market_cap_display = f"${market_cap/1e9:.1f}B"
+                elif market_cap >= 1e6:
+                    market_cap_display = f"${market_cap/1e6:.0f}M"
+                else:
+                    market_cap_display = "N/A"
+
+                # Format employees
+                if employees >= 1000:
+                    employees_display = f"{employees//1000}K+"
+                elif employees > 0:
+                    employees_display = str(employees)
+                else:
+                    employees_display = "N/A"
+
                 return {
                     'ticker': result['ticker'],
                     'company_name': result['company_name'],
-                    'sector': result['sector'],
+                    'sector': sector,
+                    'industry': industry,
+                    'description': description,
+                    'size_category': size_category,
+                    'market_cap': market_cap,
+                    'market_cap_display': market_cap_display,
+                    'employees': employees,
+                    'employees_display': employees_display,
+                    'country': country,
                     'score': result['score'],
                     'recommendation': result['recommendation'],
                     'current_price': result['current_price'],
@@ -1774,20 +2641,22 @@ def screen_stocks(filter_type='all', limit=20):
                 results.append(result)
 
     if filter_type == 'strong_buys':
-        results = [r for r in results if r['score'] >= 70]
+        # Get top 10 highest scoring stocks as buy signals
         results.sort(key=lambda x: x['score'], reverse=True)
+        results = results[:10]
     elif filter_type == 'buys':
-        results = [r for r in results if 60 <= r['score'] < 70]
+        results = [r for r in results if 55 <= r['score'] < 70]
         results.sort(key=lambda x: x['score'], reverse=True)
     elif filter_type == 'strong_sells':
-        results = [r for r in results if r['score'] <= 30]
-        results.sort(key=lambda x: x['score'])
-    elif filter_type == 'sells':
-        results = [r for r in results if 30 < r['score'] <= 40]
-        results.sort(key=lambda x: x['score'])
-    elif filter_type == 'shorts':
         results = [r for r in results if r['score'] <= 35]
         results.sort(key=lambda x: x['score'])
+    elif filter_type == 'sells':
+        results = [r for r in results if 35 < r['score'] <= 45]
+        results.sort(key=lambda x: x['score'])
+    elif filter_type == 'shorts':
+        # Get bottom 10 lowest scoring stocks as short candidates
+        results.sort(key=lambda x: x['score'])
+        results = results[:10]
     else:
         results.sort(key=lambda x: x['score'], reverse=True)
 
@@ -1817,10 +2686,13 @@ def service_worker():
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
     data = request.json
-    ticker = data.get('ticker', '').strip().upper()
+    ticker = data.get('ticker', '').strip()
 
     if not ticker:
         return jsonify({"error": "Please enter a ticker symbol"})
+
+    # Normalize ticker to handle index symbols (add ^ prefix if needed)
+    ticker = normalize_ticker(ticker)
 
     result = calculate_investment_score(ticker)
     return jsonify(result)
@@ -1886,30 +2758,107 @@ def speak():
 @app.route('/api/snapshot', methods=['GET'])
 def snapshot():
     """Market snapshot combining all data for dashboard"""
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        buys_future = executor.submit(screen_stocks, 'strong_buys', 10)
-        shorts_future = executor.submit(screen_stocks, 'shorts', 10)
-        movers_future = executor.submit(get_daily_movers)
-        sentiment_future = executor.submit(get_market_sentiment)
+    try:
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            buys_future = executor.submit(screen_stocks, 'strong_buys', 10)
+            shorts_future = executor.submit(screen_stocks, 'shorts', 10)
+            movers_future = executor.submit(get_daily_movers)
+            sentiment_future = executor.submit(get_market_sentiment)
+            indexes_future = executor.submit(get_market_indexes)
 
-    movers_result = movers_future.result()
+        # Safely get results with defaults
+        try:
+            movers_result = movers_future.result()
+        except:
+            movers_result = {'gainers': [], 'losers': []}
+
+        try:
+            market_sentiment = sentiment_future.result()
+        except:
+            market_sentiment = {}
+
+        try:
+            market_indexes = indexes_future.result()
+        except:
+            market_indexes = []
+
+        try:
+            strong_buys = buys_future.result()
+        except:
+            strong_buys = []
+
+        try:
+            shorts = shorts_future.result()
+        except:
+            shorts = []
+
+        try:
+            market_news = NewsAnalyzer.fetch_market_news()
+        except:
+            market_news = []
+
+        return jsonify({
+            'timestamp': datetime.now().isoformat(),
+            'market_sentiment': market_sentiment,
+            'market_indexes': market_indexes,
+            'strong_buys': strong_buys,
+            'shorts': shorts,
+            'gainers': movers_result.get('gainers', []),
+            'losers': movers_result.get('losers', []),
+            'market_news': market_news
+        })
+    except Exception as e:
+        return jsonify({
+            'timestamp': datetime.now().isoformat(),
+            'error': str(e),
+            'market_sentiment': {},
+            'market_indexes': [],
+            'strong_buys': [],
+            'shorts': [],
+            'gainers': [],
+            'losers': [],
+            'market_news': []
+        })
+
+
+@app.route('/api/market-indexes', methods=['GET'])
+def market_indexes():
+    """Get major market index performance"""
     return jsonify({
-        'timestamp': datetime.now().isoformat(),
-        'market_sentiment': sentiment_future.result(),
-        'strong_buys': buys_future.result(),
-        'shorts': shorts_future.result(),
-        'gainers': movers_result['gainers'],
-        'losers': movers_result['losers'],
-        'market_news': NewsAnalyzer.fetch_market_news()
+        'indexes': get_market_indexes(),
+        'timestamp': datetime.now().isoformat()
+    })
+
+
+@app.route('/api/earnings-calendar', methods=['GET'])
+def earnings_calendar():
+    """Get stocks with upcoming earnings"""
+    results = get_earnings_calendar()
+    return jsonify({
+        'earnings': results,
+        'count': len(results),
+        'timestamp': datetime.now().isoformat()
+    })
+
+
+@app.route('/api/penny-stocks', methods=['GET'])
+def penny_stocks():
+    """Get penny stock analysis"""
+    results = get_penny_stocks()
+    return jsonify({
+        'stocks': results,
+        'count': len(results),
+        'timestamp': datetime.now().isoformat()
     })
 
 @app.route('/api/stock/<ticker>/chart', methods=['GET'])
 def stock_chart(ticker):
     """Get candlestick data and stock details with pattern analysis (cached)"""
     try:
-        ticker_upper = ticker.upper()
-        info = get_cached_info(ticker_upper)
-        hist = get_cached_history(ticker_upper, period="6mo")
+        # Normalize ticker to handle index symbols (add ^ prefix if needed)
+        ticker_normalized = normalize_ticker(ticker)
+        info = get_cached_info(ticker_normalized)
+        hist = get_cached_history(ticker_normalized, period="6mo")
 
         if hist.empty:
             return jsonify({'error': 'No data available for this ticker'}), 404
@@ -1930,8 +2879,8 @@ def stock_chart(ticker):
         price_trend, trend_description = CandlestickAnalyzer.identify_trend(hist['Close'])
 
         return jsonify({
-            'ticker': ticker.upper(),
-            'company_name': info.get('longName', ticker),
+            'ticker': ticker_normalized,
+            'company_name': info.get('longName', ticker_normalized),
             'sector': info.get('sector', 'N/A'),
             'industry': info.get('industry', 'N/A'),
             'pe_ratio': info.get('trailingPE'),
@@ -1956,13 +2905,107 @@ def stock_chart(ticker):
 @app.route('/stock/<ticker>')
 def stock_page(ticker):
     """Stock detail page"""
-    return render_template('stock.html', ticker=ticker.upper())
+    # Normalize ticker to handle index symbols (add ^ prefix if needed)
+    ticker_normalized = normalize_ticker(ticker)
+    return render_template('stock.html', ticker=ticker_normalized)
 
 @app.route('/api/cache/clear', methods=['POST'])
 def clear_cache_endpoint():
     """Clear all cached data to force fresh API calls"""
     clear_cache()
     return jsonify({"status": "success", "message": "Cache cleared"})
+
+
+# ============== TRADING SIMULATOR API ENDPOINTS ==============
+
+@app.route('/api/trading-sim/status', methods=['GET'])
+def trading_sim_status():
+    """Get current trading simulation status including portfolio value, positions, and returns"""
+    market_open, market_status = is_market_open()
+    status = trading_sim.get_status()
+    status['market_open'] = market_open
+    status['market_status'] = market_status
+    return jsonify(status)
+
+
+@app.route('/api/trading-sim/history', methods=['GET'])
+def trading_sim_history():
+    """Get portfolio value history for charting"""
+    history = trading_sim.portfolio_history
+    initial_capital = trading_sim.INITIAL_CAPITAL
+    spy_start = trading_sim.spy_start_price
+
+    # Calculate percentage returns for charting
+    chart_data = []
+    for point in history:
+        portfolio_return = ((point['total_value'] - initial_capital) / initial_capital) * 100
+        spy_return = 0
+        if spy_start and point.get('spy_price'):
+            spy_return = ((point['spy_price'] - spy_start) / spy_start) * 100
+
+        chart_data.append({
+            'timestamp': point['timestamp'],
+            'portfolio_value': point['total_value'],
+            'portfolio_return': round(portfolio_return, 2),
+            'spy_return': round(spy_return, 2),
+            'cash': point.get('cash', 0),
+            'positions_value': point.get('positions_value', 0)
+        })
+
+    return jsonify({
+        'history': chart_data,
+        'initial_capital': initial_capital,
+        'spy_start_price': spy_start,
+        'data_points': len(chart_data)
+    })
+
+
+@app.route('/api/trading-sim/trades', methods=['GET'])
+def trading_sim_trades():
+    """Get trade log with AI reasoning"""
+    limit = request.args.get('limit', 50, type=int)
+    trades = trading_sim.trade_log[-limit:]  # Get most recent trades
+    trades.reverse()  # Most recent first
+    return jsonify({
+        'trades': trades,
+        'total_trades': len(trading_sim.trade_log),
+        'returned': len(trades)
+    })
+
+
+@app.route('/api/trading-sim/execute', methods=['POST'])
+def trading_sim_execute():
+    """Execute AI trading decision cycle - analyzes market and makes trades"""
+    market_open, market_status = is_market_open()
+
+    # Execute trades regardless of market hours for testing
+    # In production, you might want to restrict this
+    executed_trades = make_trading_decisions()
+    status = trading_sim.get_status()
+
+    return jsonify({
+        'executed_trades': executed_trades,
+        'trades_count': len(executed_trades),
+        'market_open': market_open,
+        'market_status': market_status,
+        'portfolio_status': status,
+        'timestamp': datetime.now().isoformat()
+    })
+
+
+@app.route('/api/trading-sim/reset', methods=['POST'])
+def trading_sim_reset():
+    """Reset simulation to $100,000 starting capital"""
+    trading_sim.reset()
+    return jsonify({
+        'status': 'success',
+        'message': 'Trading simulation reset to $100,000',
+        'portfolio_status': trading_sim.get_status()
+    })
+
+
+# ============== END TRADING SIMULATOR API ENDPOINTS ==============
+
 
 @app.route('/health')
 def health():

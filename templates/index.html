@@ -1367,15 +1367,19 @@
                 // Render each category
                 const renderPennyCard = (stock) => {
                     const scoreColor = stock.score >= 60 ? 'var(--positive)' : stock.score >= 40 ? 'var(--warning)' : 'var(--negative)';
-                    const priceDisplay = stock.price < 1 ? stock.price.toFixed(4) : stock.price.toFixed(2);
+                    const price = stock.price || stock.current_price || 0;
+                    const priceDisplay = price < 1 ? price.toFixed(4) : price.toFixed(2);
+                    const rsi = stock.rsi || 50;
+                    const volatility = stock.volatility || 20;
                     return `
                         <div class="penny-card" onclick="analyzeFromSnapshot('${stock.ticker}')">
                             <div class="penny-card-header">
-                                <div class="penny-ticker"><a href="/stock/${stock.ticker}">${stock.ticker}</a></div>
+                                <div class="penny-ticker"><a href="https://finance.yahoo.com/quote/${stock.ticker}" target="_blank" onclick="event.stopPropagation();">${stock.ticker}</a></div>
                                 <div class="penny-price" style="color: ${scoreColor}">$${priceDisplay}</div>
                             </div>
                             <div class="penny-company">${stock.company_name || stock.ticker}</div>
-                            <div class="penny-sector">${stock.sector || 'N/A'}</div>
+                            <div class="penny-sector"><span style="background: var(--bg-hover); padding: 2px 8px; border-radius: 4px; font-size: 0.6875rem; color: var(--text-secondary);">${stock.sector || 'N/A'}</span></div>
+                            <div class="penny-description" style="font-size: 0.6875rem; color: var(--text-muted); margin: 8px 0; line-height: 1.4;">${stock.description || ''}</div>
                             <div class="penny-stats">
                                 <div class="penny-stat">
                                     <div class="penny-stat-label">Score</div>
@@ -1383,11 +1387,11 @@
                                 </div>
                                 <div class="penny-stat">
                                     <div class="penny-stat-label">RSI</div>
-                                    <div class="penny-stat-value" style="color: ${stock.rsi < 30 ? 'var(--positive)' : stock.rsi > 70 ? 'var(--negative)' : 'var(--warning)'}">${stock.rsi}</div>
+                                    <div class="penny-stat-value" style="color: ${rsi < 30 ? 'var(--positive)' : rsi > 70 ? 'var(--negative)' : 'var(--warning)'}">${rsi}</div>
                                 </div>
                                 <div class="penny-stat">
                                     <div class="penny-stat-label">Vol%</div>
-                                    <div class="penny-stat-value">${stock.volatility}%</div>
+                                    <div class="penny-stat-value">${volatility}%</div>
                                 </div>
                             </div>
                         </div>

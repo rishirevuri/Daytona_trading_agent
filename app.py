@@ -3304,14 +3304,163 @@ def earnings_calendar():
 @app.route('/api/penny-stocks', methods=['GET'])
 def penny_stocks():
     """Get penny stock analysis with fallback system"""
-    # Known penny/small cap stocks - expanded list for better coverage
-    penny_tickers = ['F', 'PLTR', 'SOFI', 'NIO', 'LCID', 'RIVN', 'PLUG', 'SNAP', 'HOOD', 'WISH',
-                     'BB', 'NOK', 'SIRI', 'T', 'WBD', 'PARA', 'AAL', 'UAL', 'CCL', 'NCLH',
-                     'INTC', 'AMD', 'COIN', 'RIOT', 'MARA', 'SQ', 'PYPL', 'ROKU', 'DKNG', 'PTON']
+    # Company information with descriptions and industries
+    PENNY_STOCK_INFO = {
+        'F': {
+            'name': 'Ford Motor Company',
+            'sector': 'Automotive',
+            'description': 'American multinational automaker headquartered in Dearborn, Michigan. Manufactures cars, trucks, SUVs, and electric vehicles. One of the largest and oldest auto manufacturers in the world.'
+        },
+        'PLTR': {
+            'name': 'Palantir Technologies',
+            'sector': 'Software',
+            'description': 'Software company specializing in big data analytics and AI platforms. Provides data integration and analysis tools for government agencies and large enterprises. Known for Gotham and Foundry platforms.'
+        },
+        'SOFI': {
+            'name': 'SoFi Technologies',
+            'sector': 'Fintech',
+            'description': 'Digital financial services company offering banking, lending, and investing products. Provides student loan refinancing, personal loans, mortgages, and a mobile-first banking experience.'
+        },
+        'NIO': {
+            'name': 'NIO Inc.',
+            'sector': 'Electric Vehicles',
+            'description': 'Chinese electric vehicle manufacturer designing and developing smart, connected premium EVs. Known for battery swapping technology and luxury electric SUVs and sedans.'
+        },
+        'LCID': {
+            'name': 'Lucid Group',
+            'sector': 'Electric Vehicles',
+            'description': 'American EV manufacturer focused on luxury electric vehicles. Produces the Lucid Air sedan with industry-leading range. Competes in the premium EV segment against Tesla.'
+        },
+        'RIVN': {
+            'name': 'Rivian Automotive',
+            'sector': 'Electric Vehicles',
+            'description': 'American electric vehicle manufacturer focused on trucks and SUVs. Produces the R1T pickup and R1S SUV. Major partnership with Amazon for electric delivery vans.'
+        },
+        'PLUG': {
+            'name': 'Plug Power',
+            'sector': 'Clean Energy',
+            'description': 'Clean energy company developing hydrogen fuel cell systems. Provides hydrogen solutions for material handling, on-road vehicles, and stationary power markets.'
+        },
+        'SNAP': {
+            'name': 'Snap Inc.',
+            'sector': 'Social Media',
+            'description': 'Technology company behind Snapchat, a multimedia messaging app. Known for disappearing messages, AR filters, and Stories format. Generates revenue through digital advertising.'
+        },
+        'HOOD': {
+            'name': 'Robinhood Markets',
+            'sector': 'Fintech',
+            'description': 'Financial services company offering commission-free stock, ETF, and crypto trading. Pioneered mobile-first investing with a user-friendly app targeting retail investors.'
+        },
+        'WISH': {
+            'name': 'ContextLogic (Wish)',
+            'sector': 'E-commerce',
+            'description': 'Mobile e-commerce platform connecting buyers with merchants offering discounted products. Known for low-cost goods shipped directly from manufacturers, primarily in China.'
+        },
+        'BB': {
+            'name': 'BlackBerry Limited',
+            'sector': 'Cybersecurity',
+            'description': 'Canadian software company providing cybersecurity and IoT solutions. Transitioned from smartphones to enterprise software, specializing in endpoint security and QNX automotive systems.'
+        },
+        'NOK': {
+            'name': 'Nokia Corporation',
+            'sector': 'Telecommunications',
+            'description': 'Finnish multinational providing network infrastructure, technology, and software. Major supplier of 5G network equipment and mobile network solutions to telecom operators worldwide.'
+        },
+        'SIRI': {
+            'name': 'Sirius XM Holdings',
+            'sector': 'Media',
+            'description': 'Audio entertainment company operating satellite radio and streaming services. Provides commercial-free music, sports, news, and talk programming to subscribers across North America.'
+        },
+        'T': {
+            'name': 'AT&T Inc.',
+            'sector': 'Telecommunications',
+            'description': 'Multinational telecommunications conglomerate providing wireless services, broadband, and fiber. One of the largest telecom companies in the world by revenue.'
+        },
+        'WBD': {
+            'name': 'Warner Bros. Discovery',
+            'sector': 'Media',
+            'description': 'Global media and entertainment company formed from WarnerMedia and Discovery merger. Owns HBO Max, CNN, Warner Bros. studios, and Discovery Channel networks.'
+        },
+        'PARA': {
+            'name': 'Paramount Global',
+            'sector': 'Media',
+            'description': 'Mass media and entertainment company operating CBS, Paramount Pictures, and Paramount+. Produces and distributes content across television, film, and streaming platforms.'
+        },
+        'AAL': {
+            'name': 'American Airlines',
+            'sector': 'Airlines',
+            'description': 'Major American airline and the world\'s largest by fleet size and revenue. Operates extensive domestic and international flight network from hubs including Dallas and Charlotte.'
+        },
+        'UAL': {
+            'name': 'United Airlines',
+            'sector': 'Airlines',
+            'description': 'Major American airline operating a large domestic and international route network. Headquartered in Chicago with major hubs in Newark, San Francisco, and Denver.'
+        },
+        'CCL': {
+            'name': 'Carnival Corporation',
+            'sector': 'Cruise Lines',
+            'description': 'World\'s largest cruise company operating multiple cruise line brands. Owns Carnival Cruise Line, Princess Cruises, Holland America, and others with over 90 ships.'
+        },
+        'NCLH': {
+            'name': 'Norwegian Cruise Line',
+            'sector': 'Cruise Lines',
+            'description': 'Cruise company operating Norwegian Cruise Line, Oceania, and Regent Seven Seas brands. Known for freestyle cruising concept with flexible dining and entertainment options.'
+        },
+        'INTC': {
+            'name': 'Intel Corporation',
+            'sector': 'Semiconductor',
+            'description': 'American multinational semiconductor company and leading CPU manufacturer. Designs and produces microprocessors, chipsets, and integrated circuits for computers and data centers.'
+        },
+        'AMD': {
+            'name': 'Advanced Micro Devices',
+            'sector': 'Semiconductor',
+            'description': 'Semiconductor company producing CPUs, GPUs, and data center chips. Major competitor to Intel and NVIDIA with Ryzen processors and Radeon graphics cards.'
+        },
+        'COIN': {
+            'name': 'Coinbase Global',
+            'sector': 'Cryptocurrency',
+            'description': 'Largest cryptocurrency exchange in the United States. Provides a platform for buying, selling, and storing digital currencies like Bitcoin and Ethereum.'
+        },
+        'RIOT': {
+            'name': 'Riot Platforms',
+            'sector': 'Cryptocurrency',
+            'description': 'Bitcoin mining company operating large-scale mining facilities. One of the largest publicly traded Bitcoin miners in North America by hash rate capacity.'
+        },
+        'MARA': {
+            'name': 'Marathon Digital Holdings',
+            'sector': 'Cryptocurrency',
+            'description': 'Digital asset technology company focused on Bitcoin mining. Operates one of the largest Bitcoin mining operations in North America with significant hash rate.'
+        },
+        'SQ': {
+            'name': 'Block Inc. (Square)',
+            'sector': 'Fintech',
+            'description': 'Financial technology company offering payment processing and business tools. Operates Square for merchants and Cash App for consumers, plus Bitcoin services.'
+        },
+        'PYPL': {
+            'name': 'PayPal Holdings',
+            'sector': 'Fintech',
+            'description': 'Digital payments company enabling online money transfers and payments. Operates PayPal, Venmo, and Braintree platforms serving consumers and merchants globally.'
+        },
+        'ROKU': {
+            'name': 'Roku Inc.',
+            'sector': 'Streaming',
+            'description': 'Streaming platform company providing TV streaming devices and operating system. Offers free ad-supported Roku Channel and powers smart TVs from major manufacturers.'
+        },
+        'DKNG': {
+            'name': 'DraftKings',
+            'sector': 'Online Gaming',
+            'description': 'Digital sports entertainment and gaming company. Operates online sportsbook, daily fantasy sports, and iGaming platforms across multiple US states.'
+        },
+        'PTON': {
+            'name': 'Peloton Interactive',
+            'sector': 'Fitness',
+            'description': 'Connected fitness company selling exercise equipment with streaming workout classes. Known for stationary bikes and treadmills with live and on-demand fitness content.'
+        }
+    }
 
     results = {'buy': [], 'hold': [], 'sell': [], 'short': [], 'all': []}
 
-    for ticker in penny_tickers:
+    for ticker, info in PENNY_STOCK_INFO.items():
         try:
             quote = get_quote_with_fallback(ticker)
             if quote and quote.get('price'):
@@ -3333,18 +3482,31 @@ def penny_stocks():
                     score = max(10, 35 + int(change * 3))
                     category = 'short'
 
+                # Generate pseudo-RSI based on change (simplified)
+                rsi = 50 + (change * 5)
+                rsi = max(10, min(90, rsi))
+
+                # Generate pseudo-volatility
+                volatility = abs(change) * 3 + 15
+                volatility = max(10, min(80, volatility))
+
                 stock_data = {
                     'ticker': ticker,
-                    'company_name': ticker,
+                    'company_name': info['name'],
+                    'sector': info['sector'],
+                    'description': info['description'],
+                    'price': price,
                     'current_price': price,
                     'change_pct': change,
                     'score': min(95, max(10, score)),
+                    'rsi': round(rsi, 1),
+                    'volatility': round(volatility, 1),
                     'recommendation': 'BUY' if score >= 60 else 'HOLD' if score >= 45 else 'SELL' if score >= 30 else 'SHORT'
                 }
 
                 results[category].append(stock_data)
                 results['all'].append(stock_data)
-        except:
+        except Exception as e:
             pass
 
     # If short candidates are empty, add some based on lowest scores

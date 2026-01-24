@@ -1506,6 +1506,251 @@
         font-size: 0.875rem;
       }
 
+      /* Candlestick Chart Styles */
+      .chart-section {
+        margin-bottom: 48px;
+      }
+
+      .chart-container {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+      }
+
+      .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+
+      .chart-title {
+        font-size: 0.6875rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      .chart-legend {
+        display: flex;
+        gap: 16px;
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+      }
+
+      .legend-dot.bullish {
+        background: var(--positive);
+      }
+
+      .legend-dot.bearish {
+        background: var(--negative);
+      }
+
+      #candlestick-chart {
+        width: 100%;
+        height: 300px;
+      }
+
+      /* Trend Analysis Panel */
+      .trend-panel {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 24px;
+      }
+
+      .trend-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 20px;
+      }
+
+      .trend-info {
+        flex: 1;
+      }
+
+      .trend-label {
+        font-size: 0.6875rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 8px;
+      }
+
+      .trend-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-radius: 6px;
+      }
+
+      .trend-badge.strong-uptrend {
+        background: var(--positive);
+        color: #000;
+      }
+
+      .trend-badge.uptrend {
+        background: var(--positive-muted);
+        color: var(--positive);
+      }
+
+      .trend-badge.sideways {
+        background: var(--warning-muted);
+        color: var(--warning);
+      }
+
+      .trend-badge.downtrend {
+        background: var(--negative-muted);
+        color: var(--negative);
+      }
+
+      .trend-badge.strong-downtrend {
+        background: var(--negative);
+        color: #fff;
+      }
+
+      .trend-badge-icon {
+        font-size: 1.125rem;
+      }
+
+      .trend-description {
+        margin-top: 12px;
+        font-size: 0.9375rem;
+        color: var(--text-secondary);
+        line-height: 1.6;
+      }
+
+      .trend-patterns {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border-subtle);
+      }
+
+      .pattern-tag {
+        display: inline-block;
+        padding: 6px 12px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        border-radius: 4px;
+        margin-right: 8px;
+        margin-bottom: 8px;
+      }
+
+      .pattern-tag.bullish {
+        background: var(--positive-muted);
+        color: var(--positive);
+      }
+
+      .pattern-tag.bearish {
+        background: var(--negative-muted);
+        color: var(--negative);
+      }
+
+      /* How to Read Section */
+      .how-to-read {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border-subtle);
+      }
+
+      .how-to-read-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 16px;
+        cursor: pointer;
+      }
+
+      .how-to-read-header:hover {
+        color: var(--text-secondary);
+      }
+
+      .how-to-read-content {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+      }
+
+      .how-to-read-item {
+        background: var(--bg);
+        padding: 16px;
+        border-radius: 8px;
+      }
+
+      .how-to-read-item h4 {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .how-to-read-item p {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        line-height: 1.5;
+      }
+
+      .candle-demo {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-top: 12px;
+      }
+
+      .candle-demo-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .candle-svg {
+        width: 24px;
+        height: 48px;
+      }
+
+      .candle-demo-label {
+        font-size: 0.6875rem;
+        color: var(--text-muted);
+      }
+
+      @media (max-width: 768px) {
+        .how-to-read-content {
+          grid-template-columns: 1fr;
+        }
+        
+        .trend-header {
+          flex-direction: column;
+          gap: 16px;
+        }
+      }
+
       @media (max-width: 1024px) {
         .sim-stats-grid {
           grid-template-columns: repeat(2, 1fr);
@@ -3312,6 +3557,240 @@
         );
       }
 
+      // Candlestick Chart and Trend Panel Functions
+      let candlestickChart = null;
+
+      function getTrendBadgeClass(trend) {
+        if (trend.includes('STRONG') && trend.includes('UP')) return 'strong-uptrend';
+        if (trend.includes('UP')) return 'uptrend';
+        if (trend.includes('STRONG') && trend.includes('DOWN')) return 'strong-downtrend';
+        if (trend.includes('DOWN')) return 'downtrend';
+        return 'sideways';
+      }
+
+      function getTrendIcon(trend) {
+        if (trend.includes('STRONG') && trend.includes('UP')) return '📈';
+        if (trend.includes('UP')) return '↗️';
+        if (trend.includes('STRONG') && trend.includes('DOWN')) return '📉';
+        if (trend.includes('DOWN')) return '↘️';
+        return '➡️';
+      }
+
+      function getTrendMeaning(trend) {
+        if (trend.includes('STRONG') && trend.includes('UP')) {
+          return 'Strong bullish momentum. Price is rising sharply with high conviction. This is typically a good signal for long positions.';
+        } else if (trend.includes('UP')) {
+          return 'Bullish momentum. Price is trending upward. Consider buying opportunities, especially on pullbacks.';
+        } else if (trend.includes('STRONG') && trend.includes('DOWN')) {
+          return 'Strong bearish momentum. Price is falling sharply. Consider avoiding new long positions or look for short opportunities.';
+        } else if (trend.includes('DOWN')) {
+          return 'Bearish momentum. Price is trending downward. Be cautious with buying and watch for support levels.';
+        }
+        return 'Price is consolidating in a range. No clear direction. Wait for a breakout before taking positions.';
+      }
+
+      function buildCandlestickChartSection(ticker) {
+        return `
+          <div class="chart-section">
+            <div class="chart-container">
+              <div class="chart-header">
+                <span class="chart-title">Price Chart (Last 60 Days)</span>
+                <div class="chart-legend">
+                  <div class="legend-item">
+                    <div class="legend-dot bullish"></div>
+                    <span>Bullish (Close > Open)</span>
+                  </div>
+                  <div class="legend-item">
+                    <div class="legend-dot bearish"></div>
+                    <span>Bearish (Close < Open)</span>
+                  </div>
+                </div>
+              </div>
+              <canvas id="candlestick-chart"></canvas>
+            </div>
+          </div>
+        `;
+      }
+
+      function buildTrendPanel(candlestickAnalysis) {
+        const trend = candlestickAnalysis.price_trend || 'NEUTRAL';
+        const description = candlestickAnalysis.trend_description || 'Unable to determine trend';
+        const patterns = candlestickAnalysis.patterns || [];
+        const badgeClass = getTrendBadgeClass(trend);
+        const icon = getTrendIcon(trend);
+        const meaning = getTrendMeaning(trend);
+
+        let patternsHTML = '';
+        if (patterns.length > 0) {
+          patternsHTML = '<div class="trend-patterns"><span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Detected Patterns:</span><div style="margin-top: 10px;">';
+          patterns.forEach(p => {
+            patternsHTML += `<span class="pattern-tag ${p.type}" title="${p.description}">${p.name}</span>`;
+          });
+          patternsHTML += '</div></div>';
+        }
+
+        return `
+          <div class="trend-panel">
+            <div class="trend-header">
+              <div class="trend-info">
+                <div class="trend-label">Current Trend</div>
+                <div class="trend-badge ${badgeClass}">
+                  <span class="trend-badge-icon">${icon}</span>
+                  ${trend}
+                </div>
+                <div class="trend-description">${description}</div>
+              </div>
+            </div>
+            ${patternsHTML}
+            <div class="how-to-read">
+              <div class="how-to-read-header">
+                📚 How to Read This Chart
+              </div>
+              <div class="how-to-read-content">
+                <div class="how-to-read-item">
+                  <h4>🕯️ What is a Candlestick?</h4>
+                  <p>Each candle represents one trading day. The body shows the opening and closing price, while the thin lines (wicks) show the high and low of the day.</p>
+                  <div class="candle-demo">
+                    <div class="candle-demo-item">
+                      <svg class="candle-svg" viewBox="0 0 24 48">
+                        <line x1="12" y1="4" x2="12" y2="12" stroke="#22c55e" stroke-width="1"/>
+                        <rect x="6" y="12" width="12" height="24" fill="#22c55e" rx="1"/>
+                        <line x1="12" y1="36" x2="12" y2="44" stroke="#22c55e" stroke-width="1"/>
+                      </svg>
+                      <span class="candle-demo-label">Bullish</span>
+                    </div>
+                    <div class="candle-demo-item">
+                      <svg class="candle-svg" viewBox="0 0 24 48">
+                        <line x1="12" y1="4" x2="12" y2="12" stroke="#ef4444" stroke-width="1"/>
+                        <rect x="6" y="12" width="12" height="24" fill="#ef4444" rx="1"/>
+                        <line x1="12" y1="36" x2="12" y2="44" stroke="#ef4444" stroke-width="1"/>
+                      </svg>
+                      <span class="candle-demo-label">Bearish</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="how-to-read-item">
+                  <h4>📊 What This Trend Means</h4>
+                  <p>${meaning}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      async function renderCandlestickChart(ticker) {
+        try {
+          const response = await fetch('/api/stock/' + ticker + '/chart');
+          const data = await response.json();
+          
+          if (data.error || !data.candles || data.candles.length === 0) {
+            console.log('No chart data available');
+            return;
+          }
+
+          const canvas = document.getElementById('candlestick-chart');
+          if (!canvas) return;
+
+          const ctx = canvas.getContext('2d');
+          const dpr = window.devicePixelRatio || 1;
+          
+          // Set canvas size
+          const rect = canvas.parentElement.getBoundingClientRect();
+          canvas.width = rect.width * dpr;
+          canvas.height = 300 * dpr;
+          canvas.style.width = rect.width + 'px';
+          canvas.style.height = '300px';
+          ctx.scale(dpr, dpr);
+
+          const width = rect.width;
+          const height = 300;
+          const padding = { top: 20, right: 60, bottom: 40, left: 20 };
+
+          // Get last 60 candles
+          const candles = data.candles.slice(-60);
+          
+          // Calculate price range
+          const prices = candles.flatMap(c => [c.high, c.low]);
+          const minPrice = Math.min(...prices);
+          const maxPrice = Math.max(...prices);
+          const priceRange = maxPrice - minPrice;
+          const pricePadding = priceRange * 0.1;
+
+          // Scaling functions
+          const scaleX = (i) => padding.left + (i / (candles.length - 1)) * (width - padding.left - padding.right);
+          const scaleY = (price) => padding.top + (1 - (price - minPrice + pricePadding) / (priceRange + 2 * pricePadding)) * (height - padding.top - padding.bottom);
+
+          // Clear canvas
+          ctx.fillStyle = '#161616';
+          ctx.fillRect(0, 0, width, height);
+
+          // Draw grid lines
+          ctx.strokeStyle = '#222222';
+          ctx.lineWidth = 1;
+          const gridLines = 5;
+          for (let i = 0; i <= gridLines; i++) {
+            const y = padding.top + (i / gridLines) * (height - padding.top - padding.bottom);
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(width - padding.right, y);
+            ctx.stroke();
+
+            // Draw price labels
+            const price = maxPrice + pricePadding - (i / gridLines) * (priceRange + 2 * pricePadding);
+            ctx.fillStyle = '#555555';
+            ctx.font = '11px DM Sans, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('$' + price.toFixed(2), width - padding.right + 5, y + 4);
+          }
+
+          // Draw candlesticks
+          const candleWidth = Math.max(2, (width - padding.left - padding.right) / candles.length * 0.7);
+          
+          candles.forEach((candle, i) => {
+            const x = scaleX(i);
+            const open = scaleY(candle.open);
+            const close = scaleY(candle.close);
+            const high = scaleY(candle.high);
+            const low = scaleY(candle.low);
+            
+            const isBullish = candle.close >= candle.open;
+            const color = isBullish ? '#22c55e' : '#ef4444';
+
+            // Draw wick
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, high);
+            ctx.lineTo(x, low);
+            ctx.stroke();
+
+            // Draw body
+            const bodyTop = Math.min(open, close);
+            const bodyHeight = Math.max(1, Math.abs(close - open));
+            ctx.fillStyle = color;
+            ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+          });
+
+          // Draw date labels
+          ctx.fillStyle = '#555555';
+          ctx.font = '10px DM Sans, sans-serif';
+          ctx.textAlign = 'center';
+          const dateInterval = Math.ceil(candles.length / 6);
+          candles.forEach((candle, i) => {
+            if (i % dateInterval === 0) {
+              const x = scaleX(i);
+              const date = new Date(candle.date);
+              const label = (date.getMonth() + 1) + '/' + date.getDate();
+              ctx.fillText(label, x, height - 10);
+            }
+          });
+
+        } catch (error) {
+          console.error('Error rendering candlestick chart:', error);
+        }
+      }
+
       function displayResults(data) {
         const scoreColor = getScoreColor(data.score);
         const recClass = data.recommendation.toLowerCase().replace(" ", "-");
@@ -3539,6 +4018,8 @@
           '</div><div class="value">$' +
           data.indicators.ATR +
           "</div></div></div>" +
+          buildCandlestickChartSection(data.ticker) +
+          (data.candlestick_analysis ? buildTrendPanel(data.candlestick_analysis) : '') +
           '<div class="indicators-section"><div class="section-header"><h2>Indicator Scores</h2></div><div class="indicators-grid">' +
           indicatorsHTML +
           "</div></div>" +
@@ -3547,6 +4028,11 @@
           maPanel +
           "</div>" +
           earningsPanel;
+
+        // Render candlestick chart after DOM is updated
+        setTimeout(() => {
+          renderCandlestickChart(data.ticker);
+        }, 100);
       }
 
       // Initialize on page load

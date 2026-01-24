@@ -79,8 +79,8 @@ GET /api/market-sentiment
 ## Scoring Algorithm
 
 The investment score combines:
-- **70% Technical Score** (weighted average of indicators)
-- **30% Fundamental Score** (earnings, margins, growth)
+- **65% Technical Score** (weighted average of indicators)
+- **35% Fundamental Score** (earnings, margins, growth)
 
 ### Score Interpretation
 | Score | Recommendation | Action |
@@ -95,19 +95,22 @@ The investment score combines:
 
 | Indicator | Weight | Description |
 |-----------|--------|-------------|
-| RSI | 10% | Relative Strength Index (14-period) |
-| MACD | 10% | Moving Average Convergence Divergence |
-| Moving Averages | 12% | SMA 20/50/200, Golden/Death Cross |
+| Candlestick Patterns | 16% | Pattern detection and trend analysis |
 | Earnings | 10% | Historical earnings surprises |
-| ADX | 8% | Average Directional Index (trend strength) |
-| Bollinger Bands | 8% | Price position within bands |
-| Stochastic | 8% | Stochastic Oscillator |
+| Moving Averages | 9% | SMA 20/50/200, Golden/Death Cross |
 | VIX | 8% | Market fear gauge |
-| MFI | 6% | Money Flow Index |
-| Williams %R | 5% | Overbought/oversold |
-| CCI | 5% | Commodity Channel Index |
-| OBV | 5% | On-Balance Volume |
-| VWAP | 5% | Volume Weighted Average Price |
+| RSI | 7% | Relative Strength Index (14-period) |
+| MACD | 7% | Moving Average Convergence Divergence |
+| News Sentiment | 7% | NLP-based news sentiment |
+| ADX | 5% | Average Directional Index (trend strength) |
+| Bollinger Bands | 5% | Price position within bands |
+| Stochastic | 5% | Stochastic Oscillator |
+| MFI | 4% | Money Flow Index |
+| OBV | 4% | On-Balance Volume |
+| Williams %R | 3% | Overbought/oversold |
+| CCI | 3% | Commodity Channel Index |
+| VWAP | 3% | Volume Weighted Average Price |
+| Consumer Sentiment | 4% | Retail sentiment analysis |
 
 ## New: Market Snapshot Dashboard
 

@@ -12,7 +12,7 @@ Investment Scorer is an AI-powered real-time stock analysis platform. It calcula
 
 ```
 /
-├── app.py                    # Flask backend (~1400 lines - all logic)
+├── app.py                    # Flask backend (~3800 lines - all logic)
 ├── requirements.txt          # Python dependencies
 ├── Dockerfile               # Container configuration
 ├── docker-compose.yml       # Service orchestration
@@ -71,7 +71,7 @@ daytona create https://github.com/rishirevuri/Daytona_trading_agent
 | `get_earnings_data()` | 388-443 | Historical earnings surprises, analyst targets |
 | `calculate_fundamental_score()` | 445-587 | P/E, PEG, margins, growth, ROE scoring |
 | `calculate_technical_score()` | 589-881 | RSI, MACD, Bollinger, Stochastic, ADX, etc. |
-| `calculate_investment_score()` | 986-1268 | Main scoring function (70% tech + 30% fundamental) |
+| `calculate_investment_score()` | 986-1268 | Main scoring function (65% tech + 35% fundamental) |
 | `screen_stocks()` | 1270-1320 | Parallel screening of 100 stocks |
 
 ### API Endpoints
@@ -98,19 +98,22 @@ daytona create https://github.com/rishirevuri/Daytona_trading_agent
 
 | Indicator | Weight | Function |
 |-----------|--------|----------|
-| RSI (14) | 10% | Overbought/oversold |
-| MACD | 10% | Trend momentum |
-| Moving Averages | 12% | SMA 20/50/200, Golden/Death Cross |
+| Candlestick Patterns | 16% | Pattern detection |
 | Earnings Surprise | 10% | Beat/miss history |
-| ADX | 8% | Trend strength |
-| Bollinger Bands | 8% | Volatility position |
-| Stochastic | 8% | Momentum oscillator |
+| Moving Averages | 9% | SMA 20/50/200 |
 | VIX | 8% | Market fear gauge |
-| MFI | 6% | Money flow |
-| Williams %R | 5% | Overbought/oversold |
-| CCI | 5% | Price deviation |
-| OBV | 5% | Volume trend |
-| VWAP | 5% | Volume-weighted price |
+| RSI (14) | 7% | Overbought/oversold |
+| MACD | 7% | Trend momentum |
+| News Sentiment | 7% | NLP analysis |
+| ADX | 5% | Trend strength |
+| Bollinger Bands | 5% | Volatility position |
+| Stochastic | 5% | Momentum oscillator |
+| MFI | 4% | Money flow |
+| OBV | 4% | Volume trend |
+| Williams %R | 3% | Overbought/oversold |
+| CCI | 3% | Price deviation |
+| VWAP | 3% | Volume-weighted price |
+| Consumer Sentiment | 4% | Retail sentiment |
 
 ### Score Interpretation
 

@@ -1,58 +1,76 @@
-# Investment Scorer
+# Investment Scorer - Developer Guide
 
 ## Project Overview
 
-Investment Scorer is an AI-powered real-time stock analysis platform. It provides investment scoring based on a combination of technical (65%) and fundamental (35%) analysis, supplemented by market sentiment and news impact analysis.
+Investment Scorer is an AI-powered real-time stock analysis platform. it calculates comprehensive investment scores (1-100) based on a blend of technical analysis, fundamental metrics, and market sentiment.
 
 **Key Features:**
-*   **Real-time Analysis:** Fetches live data via `yfinance`.
+*   **Real-time Analysis:** Live market data via `yfinance`.
 *   **Investment Scoring:** 1-100 score with recommendations from STRONG SELL to STRONG BUY.
-*   **Technical Analysis:** 15+ indicators (RSI, MACD, Bollinger Bands, Stochastic, etc.).
-*   **Fundamental Analysis:** Evaluation of P/E, PEG, margins, growth, and debt.
-*   **News & Sentiment:** Sentiment analysis of recent news and broader market fear/greed (VIX).
-*   **Voice Summaries:** Integration with ElevenLabs for narrated research briefings.
-*   **Stock Screening:** Automated screening of a popular universe of stocks.
+*   **Technical Analysis:** 15+ indicators including RSI, MACD, Bollinger Bands, and Candlestick Pattern detection.
+*   **Fundamental Analysis:** Evaluation of P/E, PEG, margins, growth, and ROE.
+*   **Market Sentiment:** Aggregates VIX, consumer sentiment, and news impact analysis.
+*   **Voice Summaries:** Narrated research briefings using ElevenLabs (optional).
+*   **Stock Screener:** Parallelized screening of a 100-stock universe.
+*   **Progressive Web App:** Installable as a native app on all platforms.
 
-**Architecture:**
-*   **Backend:** Flask (Python) in `app.py`. Stateless and compute-on-demand.
-*   **Frontend:** React SPA (located in `frontend/`, served from `frontend/build/`).
+## Architecture
 
-## Building and Running
+*   **Backend:** Python/Flask in `app.py`. A single-file core (approx. 3800 lines) containing all scoring logic, data fetching, and API endpoints.
+*   **Frontend:** React SPA in `frontend/`. Built assets are served by the Flask app from `frontend/build/`.
+*   **Static Assets:** `templates/index.html` and `static/` provide additional UI components and styling.
+*   **Deployment:** Containerized with Docker and configured for Daytona cloud development.
 
-### Prerequisites
-*   Python 3.10+
-*   Node.js & npm (for frontend development)
+## Project Structure
 
-### Backend (Flask)
+```
+/
+├── app.py                    # Core Flask backend (Scoring engine & API)
+├── requirements.txt          # Python dependencies
+├── Dockerfile               # Container configuration
+├── docker-compose.yml       # Service orchestration
+├── AGENTS.md                # Detailed repository guidelines
+├── CLAUDE.md                # Claude Code specific guidance
+├── README.md                # Public project overview
+├── .daytona/                # Daytona workspace configuration
+├── .devcontainer/           # Dev container configuration
+├── frontend/                # React frontend (Source)
+│   ├── src/                 # React components and hooks
+│   └── package.json         # Node.js dependencies
+├── static/                  # Static assets and PWA service worker
+└── templates/               # HTML templates (index.html)
+```
 
-**Setup & Installation:**
+## Setup and Development
+
+### Local Development
+
+**Backend (Python 3.10+):**
 ```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Run the server
 python app.py
 # Server runs at http://localhost:8080
 ```
 
-### Frontend (React)
-
-**Setup & Installation:**
+**Frontend (Node.js & npm):**
 ```bash
 cd frontend
 npm install
-```
-
-**Development:**
-```bash
 npm start
 # Runs at http://localhost:3000
 ```
 
 **Production Build:**
 ```bash
-npm run build
-# Builds to frontend/build/, which is served by the Flask app
+cd frontend && npm run build
+# Flask will now serve the updated frontend from build/
+```
+
+### Daytona Deployment
+
+This project is optimized for [Daytona](https://www.daytona.io/).
+```bash
+daytona create https://github.com/rishirevuri/Daytona_trading_agent
 ```
 
 ## API Endpoints
@@ -60,33 +78,61 @@ npm run build
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Serves the main SPA |
-| `/api/analyze` | POST | Analyze a single stock (body: `{"ticker": "AAPL"}`) |
-| `/api/screen` | GET | Screen stocks (query: `filter=strong_buys&limit=20`) |
-| `/api/market-sentiment` | GET | Get VIX, treasury yields, and market data |
-| `/api/speak` | POST | Text-to-speech via ElevenLabs (body: `{"text": "..."}`) |
+| `/api/snapshot` | GET | Comprehensive market snapshot (VIX, Top Buys, Shorts, News) |
+| `/api/analyze` | POST | Analyze a single ticker: `{"ticker": "AAPL"}` |
+| `/api/stock/<ticker>/chart` | GET | Historical chart data and stock details |
+| `/api/screen` | GET | Screen 100 stocks: `?filter=strong_buys&limit=20` |
+| `/api/market-sentiment` | GET | VIX, treasury yields, and S&P 500 trends |
+| `/api/speak` | POST | Text-to-speech via ElevenLabs: `{"text": "..."}` |
 | `/health` | GET | Health check |
+
+## Scoring Algorithm
+
+The Investment Score (1-100) is calculated as:
+**Final Score = (Technical Score * 0.65) + (Fundamental Score * 0.35)**
+
+### Technical Indicator Weights (within Technical Score)
+
+| Indicator | Weight | Description |
+|-----------|--------|-------------|
+| Candlestick Patterns | 16% | Pattern detection and trend analysis |
+| Earnings Surprise | 10% | Average surprise over last 4 quarters |
+| Moving Averages | 9% | SMA 20/50/200 and Golden/Death Crosses |
+| VIX (Fear Index) | 8% | Market-wide volatility sentiment |
+| RSI | 7% | Relative Strength Index (14-period) |
+| MACD | 7% | Moving Average Convergence Divergence |
+| News Sentiment | 7% | NLP-based sentiment from recent news |
+| ADX | 5% | Average Directional Index (trend strength) |
+| Bollinger Bands | 5% | Price position relative to volatility bands |
+| Stochastic | 5% | Momentum oscillator |
+| MFI / OBV | 8% | Money Flow Index (4%) and On-Balance Volume (4%) |
+| Others | 13% | Williams %R, CCI, VWAP, Consumer Sentiment |
+
+### Score Interpretation
+
+| Score | Recommendation | Action |
+|-------|---------------|--------|
+| 75-100 | STRONG BUY | Long with high confidence |
+| 60-74 | BUY | Long with medium confidence |
+| 45-59 | HOLD | Wait for clearer signals |
+| 30-44 | SELL | Short with medium confidence |
+| 1-29 | STRONG SELL | Short with high confidence |
+
+## Development Conventions
+
+*   **Logic Consolidation:** Core scoring logic resides in `app.py`. Ensure any new indicators are added to the `calculate_technical_score` or `calculate_fundamental_score` functions.
+*   **Statelessness:** The backend is designed to be stateless. Data is fetched fresh from `yfinance` with minimal caching.
+*   **Error Handling:** Every indicator calculation is wrapped in try-except blocks to ensure the overall score remains available even if specific data points are missing.
+*   **Frontend UI:** Dark theme, responsive design using Tailwind CSS. Components are modularized in `frontend/src/components`.
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ELEVENLABS_API_KEY` | No | For text-to-speech feature |
-| `ELEVENLABS_VOICE_ID` | No | Voice ID for TTS (default: Adam) |
-| `FLASK_ENV` | No | Set to `development` for debug mode |
-| `API_PORT` | No | Port to run server (default: 8080) |
+| `ELEVENLABS_API_KEY` | No | Required for the "Speak Analysis" feature |
+| `ELEVENLABS_VOICE_ID` | No | Custom voice ID (default: Adam) |
+| `FLASK_ENV` | No | Set to `development` for auto-reloading |
 
-## Development Conventions
+## Disclaimer
 
-### Code Style
-*   **Python:** Clean, single-file backend logic in `app.py` for core scoring algorithm.
-*   **Frontend:** Functional React components with Tailwind CSS for styling.
-
-### Technical Indicators
-The platform calculates and weighs:
-*   **Momentum:** RSI, MACD, Stochastic, Williams %R, CCI, ROC.
-*   **Trend:** SMA (20/50/200), ADX.
-*   **Volatility:** Bollinger Bands, ATR.
-*   **Volume:** OBV, MFI, VWAP.
-
-### Disclaimer
-This tool is for educational purposes only and does not constitute financial advice. All analysis is hypothetical and based on historical data.
+This tool is for educational purposes only. It is not financial advice. All analysis is hypothetical and based on historical data.

@@ -3270,89 +3270,23 @@ def market_indexes():
 
 @app.route('/api/earnings-calendar', methods=['GET'])
 def earnings_calendar():
-    """Get stocks with upcoming earnings - with fallback system"""
-    # Major companies that report earnings regularly
-    major_companies = [
-        {'ticker': 'AAPL', 'name': 'Apple Inc.', 'sector': 'Technology'},
-        {'ticker': 'MSFT', 'name': 'Microsoft Corp.', 'sector': 'Technology'},
-        {'ticker': 'GOOGL', 'name': 'Alphabet Inc.', 'sector': 'Technology'},
-        {'ticker': 'AMZN', 'name': 'Amazon.com Inc.', 'sector': 'Consumer Cyclical'},
-        {'ticker': 'META', 'name': 'Meta Platforms Inc.', 'sector': 'Technology'},
-        {'ticker': 'NVDA', 'name': 'NVIDIA Corp.', 'sector': 'Technology'},
-        {'ticker': 'TSLA', 'name': 'Tesla Inc.', 'sector': 'Consumer Cyclical'},
-        {'ticker': 'JPM', 'name': 'JPMorgan Chase', 'sector': 'Financial'},
-        {'ticker': 'V', 'name': 'Visa Inc.', 'sector': 'Financial'},
-        {'ticker': 'JNJ', 'name': 'Johnson & Johnson', 'sector': 'Healthcare'},
-        {'ticker': 'UNH', 'name': 'UnitedHealth Group', 'sector': 'Healthcare'},
-        {'ticker': 'HD', 'name': 'Home Depot', 'sector': 'Consumer Cyclical'},
-        {'ticker': 'PG', 'name': 'Procter & Gamble', 'sector': 'Consumer Defensive'},
-        {'ticker': 'MA', 'name': 'Mastercard Inc.', 'sector': 'Financial'},
-        {'ticker': 'DIS', 'name': 'Walt Disney Co.', 'sector': 'Communication Services'},
-    ]
-
-    results = []
-    today = datetime.now()
-
-    for company in major_companies:
-        try:
-            quote = get_quote_with_fallback(company['ticker'])
-            if quote:
-                # Generate realistic earnings date (next quarter end + ~3 weeks)
-                month = today.month
-                if month <= 3:
-                    earnings_month = 4
-                elif month <= 6:
-                    earnings_month = 7
-                elif month <= 9:
-                    earnings_month = 10
-                else:
-                    earnings_month = 1
-
-                earnings_year = today.year if earnings_month > month else today.year + 1
-                earnings_date = datetime(earnings_year, earnings_month, 15 + (hash(company['ticker']) % 15))
-
-                # Generate realistic prev_surprise_pct based on ticker hash
-                ticker_hash = hash(company['ticker'])
-                prev_surprise_pct = round(((ticker_hash % 20) - 8) / 2, 1)  # Range: -4.0 to +5.5%
-
-                # Determine prediction based on historical surprise and momentum
-                change_pct = quote.get('change_pct', 0)
-                if prev_surprise_pct > 2 and change_pct > 0:
-                    prediction = 'LIKELY BEAT'
-                elif prev_surprise_pct < -2 or change_pct < -2:
-                    prediction = 'LIKELY MISS'
-                else:
-                    prediction = 'UNCERTAIN'
-
-                # Calculate score based on prev_surprise and momentum
-                base_score = 50
-                base_score += int(prev_surprise_pct * 3)  # Historical surprise weight
-                base_score += int(change_pct * 2)  # Momentum weight
-                score = max(20, min(90, base_score))
-
-                results.append({
-                    'ticker': company['ticker'],
-                    'company_name': company['name'],
-                    'sector': company['sector'],
-                    'earnings_date': earnings_date.strftime('%Y-%m-%d'),
-                    'earnings_time': 'AMC' if ticker_hash % 2 == 0 else 'BMO',
-                    'current_price': quote['price'],
-                    'days_until': (earnings_date.date() - today.date()).days,
-                    'prev_surprise_pct': prev_surprise_pct,
-                    'prediction': prediction,
-                    'score': score
-                })
-        except:
-            pass
-
-    # Sort by days until earnings
-    results.sort(key=lambda x: x.get('days_until', 999))
-
-    return jsonify({
-        'earnings': results[:15],
-        'count': len(results),
-        'timestamp': datetime.now().isoformat()
-    })
+    """Get stocks with upcoming earnings - uses real yfinance data"""
+    try:
+        # Use the existing function that fetches real earnings data
+        earnings_data = get_earnings_calendar()
+        
+        return jsonify({
+            'earnings': earnings_data,
+            'count': len(earnings_data),
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'earnings': [],
+            'count': 0,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        })
 
 
 @app.route('/api/penny-stocks', methods=['GET'])

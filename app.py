@@ -1720,7 +1720,7 @@ def get_penny_stocks():
             current_price = hist['Close'].iloc[-1]
 
             # STRICT filter: only stocks under $5
-            if current_price > 5:
+            if current_price >= 5:
                 return None
 
             company_name = info.get('longName', info.get('shortName', ticker))
@@ -1829,6 +1829,60 @@ def get_penny_stocks():
 
     _ticker_cache.set(cache_key, organized_results, ttl=1800)  # 30 min cache
     return organized_results
+
+
+def ensure_penny_section_minimums(stocks, min_per_category=3):
+    """Ensure each penny stock category has a minimum number of stocks."""
+    categories = {'buy': [], 'hold': [], 'sell': [], 'short': []}
+    if not stocks:
+        return categories
+
+    def category_sort_key(category, stock):
+        score = stock.get('score', 50)
+        if category == 'buy':
+            return -score
+        if category == 'short':
+            return score
+        if category == 'hold':
+            return abs(score - 50)
+        return abs(score - 40)
+
+    for stock in stocks:
+        score = stock.get('score', 50)
+        if score >= 55:
+            categories['buy'].append(stock)
+        elif score >= 45:
+            categories['hold'].append(stock)
+        elif score >= 35:
+            categories['sell'].append(stock)
+        else:
+            categories['short'].append(stock)
+
+    for target in categories:
+        while len(categories[target]) < min_per_category:
+            donors = [cat for cat in categories if cat != target and len(categories[cat]) > min_per_category]
+            if not donors:
+                break
+            candidates = []
+            for donor in donors:
+                candidates.extend(categories[donor])
+            candidate = min(candidates, key=lambda stock: category_sort_key(target, stock))
+            for donor in donors:
+                if candidate in categories[donor]:
+                    categories[donor].remove(candidate)
+                    break
+            categories[target].append(candidate)
+
+    all_stocks = list(stocks)
+    for target in categories:
+        if len(categories[target]) < min_per_category and all_stocks:
+            candidates = sorted(all_stocks, key=lambda stock: category_sort_key(target, stock))
+            idx = 0
+            while len(categories[target]) < min_per_category:
+                categories[target].append(candidates[idx % len(candidates)].copy())
+                idx += 1
+
+    return categories
 
 
 def get_earnings_data(ticker):
@@ -3458,64 +3512,64 @@ def penny_stocks():
         }
     }
 
-    results = {'buy': [], 'hold': [], 'sell': [], 'short': [], 'all': []}
+    penny_tickers = list(dict.fromkeys(PENNY_STOCK_UNIVERSE + list(PENNY_STOCK_INFO.keys())))
+    stocks = []
 
-    for ticker, info in PENNY_STOCK_INFO.items():
+    for ticker in penny_tickers:
+        info = PENNY_STOCK_INFO.get(ticker, {'name': ticker, 'sector': 'N/A', 'description': ''})
         try:
             quote = get_quote_with_fallback(ticker)
-            if quote and quote.get('price'):
-                price = quote['price']
-                change = quote.get('change_pct', 0)
+            if not quote or quote.get('price') is None:
+                continue
 
-                # Calculate score based on momentum - adjusted thresholds for better short candidates
-                if change > 3:
-                    score = 75 + min(20, int(change * 2))
-                    category = 'buy'
-                elif change > 0.5:
-                    score = 55 + int(change * 5)
-                    category = 'hold'
-                elif change > -1:
-                    score = 40 + int(change * 5)
-                    category = 'sell'
-                else:
-                    # More stocks fall into short category
-                    score = max(10, 35 + int(change * 3))
-                    category = 'short'
+            try:
+                price = float(quote['price'])
+            except (TypeError, ValueError):
+                continue
 
-                # Generate pseudo-RSI based on change (simplified)
-                rsi = 50 + (change * 5)
-                rsi = max(10, min(90, rsi))
+            if price >= 5:
+                continue
 
-                # Generate pseudo-volatility
-                volatility = abs(change) * 3 + 15
-                volatility = max(10, min(80, volatility))
+            change = quote.get('change_pct', 0) or 0
 
-                stock_data = {
-                    'ticker': ticker,
-                    'company_name': info['name'],
-                    'sector': info['sector'],
-                    'description': info['description'],
-                    'price': price,
-                    'current_price': price,
-                    'change_pct': change,
-                    'score': min(95, max(10, score)),
-                    'rsi': round(rsi, 1),
-                    'volatility': round(volatility, 1),
-                    'recommendation': 'BUY' if score >= 60 else 'HOLD' if score >= 45 else 'SELL' if score >= 30 else 'SHORT'
-                }
+            # Calculate score based on momentum - adjusted thresholds for better short candidates
+            if change > 3:
+                score = 75 + min(20, int(change * 2))
+            elif change > 0.5:
+                score = 55 + int(change * 5)
+            elif change > -1:
+                score = 40 + int(change * 5)
+            else:
+                # More stocks fall into short category
+                score = max(10, 35 + int(change * 3))
 
-                results[category].append(stock_data)
-                results['all'].append(stock_data)
-        except Exception as e:
+            # Generate pseudo-RSI based on change (simplified)
+            rsi = 50 + (change * 5)
+            rsi = max(10, min(90, rsi))
+
+            # Generate pseudo-volatility
+            volatility = abs(change) * 3 + 15
+            volatility = max(10, min(80, volatility))
+
+            stock_data = {
+                'ticker': ticker,
+                'company_name': info['name'],
+                'sector': info['sector'],
+                'description': info['description'],
+                'price': price,
+                'current_price': price,
+                'change_pct': change,
+                'score': min(95, max(10, score)),
+                'rsi': round(rsi, 1),
+                'volatility': round(volatility, 1),
+                'recommendation': 'BUY' if score >= 60 else 'HOLD' if score >= 45 else 'SELL' if score >= 30 else 'SHORT'
+            }
+
+            stocks.append(stock_data)
+        except Exception:
             pass
 
-    # If short candidates are empty, add some based on lowest scores
-    if len(results['short']) < 3:
-        all_sorted = sorted(results['all'], key=lambda x: x.get('score', 50))
-        for stock in all_sorted[:5]:
-            if stock not in results['short']:
-                stock['recommendation'] = 'SHORT'
-                results['short'].append(stock)
+    results = ensure_penny_section_minimums(stocks, min_per_category=3)
 
     # Sort each category
     for cat in ['buy', 'hold', 'sell', 'short']:
@@ -3529,8 +3583,8 @@ def penny_stocks():
         'hold': results['hold'][:5],
         'sell': results['sell'][:5],
         'short': results['short'][:5],
-        'stocks': results['all'],
-        'count': len(results['all']),
+        'stocks': stocks,
+        'count': len(stocks),
         'timestamp': datetime.now().isoformat()
     })
 

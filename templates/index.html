@@ -134,7 +134,12 @@
             background: var(--bg);
             padding: 20px;
             text-align: center;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: block;
         }
+
+        .market-item:hover { background: var(--bg-elevated); }
 
         .market-item .symbol {
             font-size: 0.6875rem;
@@ -503,6 +508,32 @@
 
         .risk-warning { background: var(--negative-muted); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; padding: 16px 20px; margin-bottom: 32px; font-size: 0.8125rem; color: var(--negative); }
 
+        /* Penny Stocks Categories */
+        .penny-category { margin-bottom: 32px; }
+        .penny-category-header { font-size: 1rem; font-weight: 600; margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; }
+        .penny-category-header.buy { background: var(--positive-muted); color: var(--positive); border-left: 4px solid var(--positive); }
+        .penny-category-header.hold { background: var(--warning-muted); color: var(--warning); border-left: 4px solid var(--warning); }
+        .penny-category-header.sell { background: var(--negative-muted); color: var(--negative); border-left: 4px solid var(--negative); }
+        .penny-category-header.short { background: rgba(139, 69, 139, 0.1); color: #a855f7; border-left: 4px solid #a855f7; }
+        .penny-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+        .penny-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; transition: all 0.2s; }
+        .penny-card:hover { border-color: var(--text-secondary); transform: translateY(-2px); }
+        .penny-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        .penny-ticker { font-size: 1.125rem; font-weight: 700; color: var(--text); }
+        .penny-ticker a { color: inherit; text-decoration: none; }
+        .penny-ticker a:hover { color: var(--positive); }
+        .penny-price { font-size: 1rem; font-weight: 600; }
+        .penny-company { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .penny-sector { font-size: 0.6875rem; color: var(--text-muted); background: var(--bg-elevated); padding: 2px 8px; border-radius: 4px; display: inline-block; margin-bottom: 12px; }
+        .penny-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .penny-stat { text-align: center; }
+        .penny-stat-label { font-size: 0.625rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .penny-stat-value { font-size: 0.875rem; font-weight: 600; }
+        .penny-score { display: flex; align-items: center; gap: 4px; }
+        .penny-score-bar { height: 6px; border-radius: 3px; flex: 1; background: var(--border); overflow: hidden; }
+        .penny-score-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+        .penny-empty { color: var(--text-muted); font-size: 0.875rem; padding: 24px; text-align: center; background: var(--bg-elevated); border-radius: 8px; }
+
         .loading { display: none; text-align: center; padding: 80px 0; }
         .loading.active { display: block; }
         .spinner { width: 32px; height: 32px; border: 2px solid var(--border); border-top-color: var(--text); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
@@ -553,15 +584,15 @@
         .sim-stats-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin-bottom: 32px;
+            gap: 8px;
+            margin-bottom: 10px;
         }
 
         .sim-stat-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
+            border-radius: 6px;
+            padding: 12px;
             text-align: center;
         }
 
@@ -585,15 +616,15 @@
 
         .sim-controls {
             display: flex;
-            gap: 12px;
-            margin-bottom: 32px;
+            gap: 6px;
+            margin-bottom: 10px;
             flex-wrap: wrap;
             align-items: center;
         }
 
         .sim-btn {
-            padding: 12px 24px;
-            font-size: 0.875rem;
+            padding: 8px 16px;
+            font-size: 0.8125rem;
             font-weight: 500;
             font-family: var(--sans);
             border: 1px solid var(--border);
@@ -656,29 +687,29 @@
 
         .sim-charts {
             display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 24px;
-            margin-bottom: 32px;
+            grid-template-columns: 3fr 1fr;
+            gap: 8px;
+            margin-bottom: 12px;
         }
 
         .sim-chart-container {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
+            border-radius: 6px;
+            padding: 8px;
         }
 
         .sim-chart-title {
-            font-size: 0.6875rem;
+            font-size: 0.5rem;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            margin-bottom: 16px;
+            margin-bottom: 4px;
         }
 
         .sim-chart-canvas {
             width: 100%;
-            height: 250px;
+            height: 70px;
         }
 
         .sim-positions-table {
@@ -725,6 +756,23 @@
         .position-side.short {
             background: var(--negative-muted);
             color: var(--negative);
+        }
+
+        .close-btn {
+            padding: 4px 12px;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            background: var(--negative-muted);
+            color: var(--negative);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            background: var(--negative);
+            color: white;
         }
 
         .trade-log {
@@ -946,11 +994,11 @@
             </div>
 
             <div id="penny-section" class="section">
-                <div class="risk-warning"><strong>High Risk:</strong> Penny stocks are highly speculative. Only invest what you can afford to lose.</div>
+                <div class="risk-warning"><strong>⚠️ High Risk:</strong> Penny stocks (under $5) are highly speculative and volatile. Only invest what you can afford to lose completely.</div>
 
                 <div class="section-header">
-                    <h2>Penny Stocks</h2>
-                    <span class="meta">Under $10</span>
+                    <h2>Penny Stocks Analysis</h2>
+                    <span class="meta">Under $5</span>
                 </div>
 
                 <div class="loading" id="penny-loading">
@@ -959,23 +1007,31 @@
                 </div>
 
                 <div id="penny-content" style="display: none;">
-                    <div style="overflow-x: auto;">
-                        <table class="data-table" id="penny-table">
-                            <thead>
-                                <tr>
-                                    <th>Ticker</th>
-                                    <th>Company</th>
-                                    <th>Price</th>
-                                    <th>Score</th>
-                                    <th>Signal</th>
-                                    <th>RSI</th>
-                                    <th>Volatility</th>
-                                </tr>
-                            </thead>
-                            <tbody id="penny-tbody"></tbody>
-                        </table>
+                    <!-- BUY Section -->
+                    <div class="penny-category" id="penny-buy-section">
+                        <h3 class="penny-category-header buy">📈 BUY Signals</h3>
+                        <div class="penny-grid" id="penny-buy-grid"></div>
                     </div>
-                    <div id="no-penny-msg" style="display: none; text-align: center; padding: 60px 0; color: var(--text-muted);">No penny stock data available</div>
+
+                    <!-- HOLD Section -->
+                    <div class="penny-category" id="penny-hold-section">
+                        <h3 class="penny-category-header hold">⏸️ HOLD</h3>
+                        <div class="penny-grid" id="penny-hold-grid"></div>
+                    </div>
+
+                    <!-- SELL Section -->
+                    <div class="penny-category" id="penny-sell-section">
+                        <h3 class="penny-category-header sell">📉 SELL Signals</h3>
+                        <div class="penny-grid" id="penny-sell-grid"></div>
+                    </div>
+
+                    <!-- SHORT Section -->
+                    <div class="penny-category" id="penny-short-section">
+                        <h3 class="penny-category-header short">🔻 SHORT Candidates</h3>
+                        <div class="penny-grid" id="penny-short-grid"></div>
+                    </div>
+
+                    <div id="no-penny-msg" style="display: none; text-align: center; padding: 60px 0; color: var(--text-muted);">No penny stocks under $5 found</div>
                 </div>
             </div>
 
@@ -1028,6 +1084,27 @@
                         </div>
                     </div>
 
+                    <!-- Manual Trade Form -->
+                    <div class="panel" style="margin-bottom: 24px;">
+                        <div class="panel-header">
+                            <span class="panel-title">Manual Trade</span>
+                            <span class="panel-title" style="font-size: 0.625rem; color: var(--warning);">Overrides AI</span>
+                        </div>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+                            <div style="flex: 1; min-width: 100px;">
+                                <label style="display: block; font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 4px;">Ticker</label>
+                                <input type="text" id="manual-ticker" placeholder="AAPL" maxlength="5" style="width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.875rem; text-transform: uppercase;">
+                            </div>
+                            <div style="flex: 1; min-width: 80px;">
+                                <label style="display: block; font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 4px;">Quantity</label>
+                                <input type="number" id="manual-quantity" placeholder="10" min="1" style="width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.875rem;">
+                            </div>
+                            <button type="button" class="sim-btn" style="background: var(--positive); color: white;" onclick="executeManualTrade('buy')">Buy</button>
+                            <button type="button" class="sim-btn" style="background: var(--negative); color: white;" onclick="executeManualTrade('sell')">Sell</button>
+                            <button type="button" class="sim-btn" style="background: var(--warning); color: black;" onclick="executeManualTrade('short')">Short</button>
+                        </div>
+                    </div>
+
                     <!-- Charts -->
                     <div class="sim-charts">
                         <div class="sim-chart-container">
@@ -1041,7 +1118,7 @@
                     </div>
 
                     <!-- Positions Table -->
-                    <div class="panel" style="margin-bottom: 24px;">
+                    <div class="panel" style="margin-bottom: 12px;">
                         <div class="panel-header">
                             <span class="panel-title">Current Positions</span>
                             <span class="panel-title" id="positions-count">0 positions</span>
@@ -1058,6 +1135,7 @@
                                         <th>Value</th>
                                         <th>P&L</th>
                                         <th>P&L %</th>
+                                        <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody id="positions-tbody"></tbody>
@@ -1098,6 +1176,7 @@
         if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(() => {}); }
 
         function showSection(section) {
+            const scrollPos = window.scrollY;
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             const activeTab = document.querySelector('.nav-tab[onclick="showSection(\'' + section + '\')"]');
             if (activeTab) activeTab.classList.add('active');
@@ -1107,6 +1186,8 @@
             if (section === 'earnings') loadEarningsCalendar();
             if (section === 'penny') loadPennyStocks();
             if (section === 'trading-sim') loadTradingSim();
+            // Preserve scroll position
+            window.scrollTo(0, scrollPos);
         }
 
         function formatNumber(num) { if (num === null || num === undefined) return 'N/A'; if (num >= 1e12) return (num / 1e12).toFixed(1) + 'T'; if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B'; if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M'; return num.toLocaleString(); }
@@ -1188,10 +1269,10 @@
                 const changePct = idx.change_pct ?? 0;
                 const changeClass = changePct >= 0 ? 'up' : 'down';
                 const sign = changePct >= 0 ? '+' : '';
-                const symbol = (idx.symbol || '').replace('^', '');
-                const name = idx.name || symbol || 'Index';
+                const name = idx.name || 'Index';
                 const price = idx.price ? idx.price.toLocaleString(undefined, {maximumFractionDigits: 0}) : '--';
-                return '<div class="market-item"><div class="symbol">' + name + '</div><div class="price">' + price + '</div><div class="change ' + changeClass + '">' + sign + changePct.toFixed(2) + '%</div></div>';
+                const url = idx.url || 'https://finance.yahoo.com';
+                return '<a href="' + url + '" target="_blank" class="market-item" style="text-decoration: none; color: inherit;"><div class="symbol">' + name + '</div><div class="price">' + price + '</div><div class="change ' + changeClass + '">' + sign + changePct.toFixed(2) + '%</div></a>';
             }).join('');
         }
 
@@ -1276,25 +1357,79 @@
             const loading = document.getElementById('penny-loading');
             const content = document.getElementById('penny-content');
             const noMsg = document.getElementById('no-penny-msg');
-            const tbody = document.getElementById('penny-tbody');
             loading.classList.add('active');
             content.style.display = 'none';
 
             try {
                 const response = await fetch('/api/penny-stocks');
                 const data = await response.json();
-                if (data.stocks && data.stocks.length > 0) {
-                    tbody.innerHTML = data.stocks.map(s => {
-                        const recClass = s.recommendation.toLowerCase().replace(' ', '-');
-                        const rsiClass = s.rsi < 30 ? 'high' : s.rsi > 70 ? 'low' : 'medium';
-                        const volClass = s.volatility > 10 ? 'low' : s.volatility > 5 ? 'medium' : 'high';
-                        return '<tr onclick="analyzeFromSnapshot(\'' + s.ticker + '\')"><td class="ticker-link">' + s.ticker + '</td><td>' + s.company_name + '</td><td>$' + s.price.toFixed(2) + '</td><td><span class="badge ' + getScoreClass(s.score) + '">' + s.score + '</span></td><td><span class="badge ' + (recClass === 'strong-buy' || recClass === 'buy' ? 'high' : recClass === 'hold' ? 'medium' : 'low') + '">' + s.recommendation + '</span></td><td><span class="badge ' + rsiClass + '">' + s.rsi + '</span></td><td><span class="badge ' + volClass + '">' + s.volatility + '%</span></td></tr>';
-                    }).join('');
+
+                // Render each category
+                const renderPennyCard = (stock) => {
+                    const scoreColor = stock.score >= 60 ? 'var(--positive)' : stock.score >= 40 ? 'var(--warning)' : 'var(--negative)';
+                    const priceDisplay = stock.price < 1 ? stock.price.toFixed(4) : stock.price.toFixed(2);
+                    return `
+                        <div class="penny-card" onclick="analyzeFromSnapshot('${stock.ticker}')">
+                            <div class="penny-card-header">
+                                <div class="penny-ticker"><a href="/stock/${stock.ticker}">${stock.ticker}</a></div>
+                                <div class="penny-price" style="color: ${scoreColor}">$${priceDisplay}</div>
+                            </div>
+                            <div class="penny-company">${stock.company_name || stock.ticker}</div>
+                            <div class="penny-sector">${stock.sector || 'N/A'}</div>
+                            <div class="penny-stats">
+                                <div class="penny-stat">
+                                    <div class="penny-stat-label">Score</div>
+                                    <div class="penny-stat-value" style="color: ${scoreColor}">${stock.score}</div>
+                                </div>
+                                <div class="penny-stat">
+                                    <div class="penny-stat-label">RSI</div>
+                                    <div class="penny-stat-value" style="color: ${stock.rsi < 30 ? 'var(--positive)' : stock.rsi > 70 ? 'var(--negative)' : 'var(--warning)'}">${stock.rsi}</div>
+                                </div>
+                                <div class="penny-stat">
+                                    <div class="penny-stat-label">Vol%</div>
+                                    <div class="penny-stat-value">${stock.volatility}%</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                };
+
+                const renderCategory = (stocks, gridId, sectionId) => {
+                    const grid = document.getElementById(gridId);
+                    const section = document.getElementById(sectionId);
+                    if (stocks && stocks.length > 0) {
+                        grid.innerHTML = stocks.map(renderPennyCard).join('');
+                        section.style.display = 'block';
+                    } else {
+                        grid.innerHTML = '<div class="penny-empty">No stocks in this category</div>';
+                        section.style.display = 'block';
+                    }
+                };
+
+                const hasAnyStocks = (data.buy && data.buy.length > 0) ||
+                                     (data.hold && data.hold.length > 0) ||
+                                     (data.sell && data.sell.length > 0) ||
+                                     (data.short && data.short.length > 0);
+
+                if (hasAnyStocks) {
+                    renderCategory(data.buy, 'penny-buy-grid', 'penny-buy-section');
+                    renderCategory(data.hold, 'penny-hold-grid', 'penny-hold-section');
+                    renderCategory(data.sell, 'penny-sell-grid', 'penny-sell-section');
+                    renderCategory(data.short, 'penny-short-grid', 'penny-short-section');
                     noMsg.style.display = 'none';
-                } else { tbody.innerHTML = ''; noMsg.style.display = 'block'; }
+                } else {
+                    noMsg.style.display = 'block';
+                }
                 content.style.display = 'block';
                 pennyLoaded = true;
-            } catch (error) { noMsg.textContent = 'Failed to load penny stock data'; noMsg.style.display = 'block'; content.style.display = 'block'; } finally { loading.classList.remove('active'); }
+            } catch (error) {
+                console.error('Penny stocks error:', error);
+                noMsg.textContent = 'Failed to load penny stock data';
+                noMsg.style.display = 'block';
+                content.style.display = 'block';
+            } finally {
+                loading.classList.remove('active');
+            }
         }
 
         // ============== TRADING SIMULATOR FUNCTIONS ==============
@@ -1394,8 +1529,9 @@
             tbody.innerHTML = positions.map(p => {
                 const pnlClass = p.pnl >= 0 ? 'positive' : 'negative';
                 const sign = p.pnl >= 0 ? '+' : '';
-                return `<tr onclick="analyzeFromSnapshot('${p.ticker}')">
-                    <td style="font-weight: 600;">${p.ticker}</td>
+                const manualBadge = p.human_controlled ? '<span style="margin-left: 6px; font-size: 0.625rem; padding: 2px 6px; background: var(--warning-muted); color: var(--warning); border-radius: 3px;">MANUAL</span>' : '';
+                return `<tr>
+                    <td style="font-weight: 600; cursor: pointer;" onclick="analyzeFromSnapshot('${p.ticker}')">${p.ticker}${manualBadge}</td>
                     <td><span class="position-side ${p.side}">${p.side}</span></td>
                     <td>${p.quantity}</td>
                     <td>$${p.avg_price.toFixed(2)}</td>
@@ -1403,8 +1539,72 @@
                     <td>$${formatNumber(p.value)}</td>
                     <td style="color: var(--${pnlClass})">${sign}$${p.pnl.toFixed(2)}</td>
                     <td style="color: var(--${pnlClass})">${sign}${p.pnl_pct.toFixed(2)}%</td>
+                    <td><button class="close-btn" onclick="event.stopPropagation(); closePosition('${p.ticker}')">Close</button></td>
                 </tr>`;
             }).join('');
+        }
+
+        async function closePosition(ticker) {
+            if (!confirm('Close your ' + ticker + ' position?')) return;
+
+            try {
+                const response = await fetch('/api/trading-sim/close-position', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker })
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    await refreshSimStatus();
+                    await loadTradeLog();
+                } else {
+                    alert('Failed to close position: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error closing position:', error);
+                alert('Error closing position');
+            }
+        }
+
+        async function executeManualTrade(type) {
+            const ticker = document.getElementById('manual-ticker').value.trim().toUpperCase();
+            const quantity = parseInt(document.getElementById('manual-quantity').value, 10);
+
+            if (!ticker) {
+                alert('Please enter a ticker symbol');
+                return;
+            }
+            if (!quantity || quantity < 1) {
+                alert('Please enter a valid quantity');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/trading-sim/manual-trade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type, ticker, quantity })
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // Clear form
+                    document.getElementById('manual-ticker').value = '';
+                    document.getElementById('manual-quantity').value = '';
+
+                    // Refresh data
+                    await refreshSimStatus();
+                    await loadTradeLog();
+
+                    alert(type.toUpperCase() + ' order executed for ' + quantity + ' shares of ' + ticker);
+                } else {
+                    alert('Trade failed: ' + (data.trade?.error || data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error executing manual trade:', error);
+                alert('Error executing trade');
+            }
         }
 
         async function loadTradeLog() {
@@ -1567,10 +1767,10 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    cutout: '50%',
                     plugins: {
                         legend: {
-                            position: 'right',
-                            labels: { color: '#888888', font: { size: 11 }, padding: 10 }
+                            display: false
                         },
                         tooltip: {
                             callbacks: {
@@ -1879,11 +2079,79 @@
                 wrapTerm('Dividend', data.fundamentals.dividend_yield + '%', false) +
                 '</div></div>';
 
+            // Build earnings panel
+            let earningsPanel = '<div class="panel"><div class="panel-header"><span class="panel-title">Recent Earnings</span><a href="https://finance.yahoo.com/quote/' + data.ticker + '/earnings" target="_blank" style="font-size: 0.75rem; color: var(--text-secondary); text-decoration: none;">View Details →</a></div>';
+
+            const earnings = data.earnings || {};
+            const earningsHistory = earnings.earnings_history || [];
+            const nextEarningsDate = earnings.earnings_date;
+            const avgSurprise = earnings.earnings_surprise_avg || 0;
+
+            if (earningsHistory.length > 0) {
+                // Get last 2 earnings reports
+                const recentEarnings = earningsHistory.slice(-2).reverse();
+
+                earningsPanel += '<div style="display: flex; flex-direction: column; gap: 16px;">';
+
+                recentEarnings.forEach((e, idx) => {
+                    const actual = e.actual !== null && e.actual !== undefined ? e.actual.toFixed(2) : 'N/A';
+                    const estimate = e.estimate !== null && e.estimate !== undefined ? e.estimate.toFixed(2) : 'N/A';
+                    const surprise = e.surprise !== null && e.surprise !== undefined ? e.surprise : 0;
+                    const surpriseClass = surprise >= 0 ? 'up' : 'down';
+                    const surpriseSign = surprise >= 0 ? '+' : '';
+                    const beatMiss = surprise >= 0 ? 'Beat' : 'Missed';
+                    const dateStr = e.date ? e.date.split(' ')[0] : 'N/A';
+
+                    earningsPanel += '<div style="padding: 12px; background: var(--bg); border-radius: 8px;">' +
+                        '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">' +
+                        '<span style="font-size: 0.75rem; color: var(--text-muted);">' + dateStr + '</span>' +
+                        '<span class="' + surpriseClass + '" style="font-size: 0.75rem; font-weight: 600;">' + beatMiss + ' by ' + surpriseSign + surprise.toFixed(1) + '%</span>' +
+                        '</div>' +
+                        '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">' +
+                        '<div><div style="font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 2px;">Actual EPS</div><div style="font-size: 1rem; font-weight: 600;">$' + actual + '</div></div>' +
+                        '<div><div style="font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 2px;">Estimate</div><div style="font-size: 1rem; color: var(--text-secondary);">$' + estimate + '</div></div>' +
+                        '</div></div>';
+                });
+
+                // Summary and next earnings prediction
+                let summaryText = '';
+                let predictionText = '';
+
+                if (avgSurprise > 5) {
+                    summaryText = data.company_name + ' has consistently beaten analyst expectations with an average surprise of +' + avgSurprise.toFixed(1) + '%.';
+                    predictionText = 'Based on this trend, the company is likely to beat estimates in the next earnings report.';
+                } else if (avgSurprise > 0) {
+                    summaryText = data.company_name + ' has generally met or slightly exceeded expectations with an average surprise of +' + avgSurprise.toFixed(1) + '%.';
+                    predictionText = 'Expect the company to meet or slightly beat estimates next quarter.';
+                } else if (avgSurprise > -5) {
+                    summaryText = data.company_name + ' has been near analyst expectations with an average surprise of ' + avgSurprise.toFixed(1) + '%.';
+                    predictionText = 'Results may come in close to estimates. Watch for guidance changes.';
+                } else {
+                    summaryText = data.company_name + ' has missed analyst expectations with an average surprise of ' + avgSurprise.toFixed(1) + '%.';
+                    predictionText = 'Caution advised - the company may continue to underperform expectations.';
+                }
+
+                earningsPanel += '<div style="padding: 12px; background: var(--bg-elevated); border-radius: 8px; border-left: 3px solid var(--text-muted);">' +
+                    '<div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 8px;">' + summaryText + '</div>' +
+                    '<div style="font-size: 0.8125rem; color: var(--text);"><strong>Next Earnings:</strong> ' + predictionText + '</div>';
+
+                if (nextEarningsDate) {
+                    earningsPanel += '<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px;">Expected: ' + nextEarningsDate + '</div>';
+                }
+
+                earningsPanel += '</div></div>';
+            } else {
+                earningsPanel += '<div style="padding: 40px 0; text-align: center; color: var(--text-muted);">No earnings history available</div>';
+            }
+
+            earningsPanel += '</div>';
+
             document.getElementById('results').innerHTML =
                 '<div class="score-hero"><div class="score-company"><h2>' + data.company_name + '</h2><div class="ticker">' + data.ticker + '</div><div class="sector">' + data.sector + ' / ' + data.industry + '</div></div><div class="score-value"><div class="score-circle"><svg viewBox="0 0 160 160"><circle class="track" cx="80" cy="80" r="70"/><circle class="progress" cx="80" cy="80" r="70" stroke="' + scoreColor + '" stroke-dasharray="' + circumference + '" stroke-dashoffset="' + offset + '"/></svg><span class="score-number" style="color: ' + scoreColor + '">' + data.score + '</span></div><div class="score-label">Investment Score</div><div class="recommendation ' + recClass + '">' + data.recommendation + '</div></div></div>' +
                 '<div class="metrics-grid"><div class="metric-cell"><div class="label">Current Price</div><div class="value">$' + data.current_price + '</div></div><div class="metric-cell"><div class="label">52W High</div><div class="value up">$' + data.fundamentals['52_week_high'] + '</div></div><div class="metric-cell"><div class="label">52W Low</div><div class="value down">$' + data.fundamentals['52_week_low'] + '</div></div><div class="metric-cell"><div class="label">' + (isLong ? 'Target' : 'Cover Target') + '</div><div class="value up">$' + (isLong ? data.price_targets.long_target_2 : data.price_targets.short_target_2) + '</div></div><div class="metric-cell"><div class="label">Stop Loss</div><div class="value down">$' + (isLong ? data.price_targets.long_stop_loss : data.price_targets.short_stop_loss) + '</div></div><div class="metric-cell"><div class="label term-wrap">ATR' + buildTooltip('ATR', false) + '</div><div class="value">$' + data.indicators.ATR + '</div></div></div>' +
                 '<div class="indicators-section"><div class="section-header"><h2>Indicator Scores</h2></div><div class="indicators-grid">' + indicatorsHTML + '</div></div>' +
-                '<div class="grid-2">' + techPanel + maPanel + '</div>';
+                '<div class="grid-2">' + techPanel + maPanel + '</div>' +
+                earningsPanel;
         }
 
         // Initialize on page load

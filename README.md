@@ -1,2 +1,2 @@
 # Daytona_trading_agent
-trading agent for daytona hackathin 
+trading agent for daytona hackathon

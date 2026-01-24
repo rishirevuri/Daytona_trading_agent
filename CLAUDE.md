@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Investment Scorer is an AI-powered real-time stock analysis platform. It provides investment scoring based on technical and fundamental indicators, with market sentiment analysis and stock screening capabilities.
+Investment Scorer is an AI-powered real-time stock analysis platform. It calculates investment scores (1-100) based on 15+ technical indicators and fundamental metrics, with market sentiment analysis and stock screening capabilities.
 
 **Key principle**: Real-time analysis, stateless architecture, paper trading only.
 
@@ -12,7 +12,7 @@ Investment Scorer is an AI-powered real-time stock analysis platform. It provide
 
 ```
 /
-├── app.py                    # Flask backend (core logic - all analysis endpoints)
+├── app.py                    # Flask backend (~1400 lines - all logic)
 ├── requirements.txt          # Python dependencies
 ├── Dockerfile               # Container configuration
 ├── docker-compose.yml       # Service orchestration
@@ -21,103 +21,96 @@ Investment Scorer is an AI-powered real-time stock analysis platform. It provide
 ├── .devcontainer/
 │   └── devcontainer.json    # Dev container configuration
 ├── templates/
-│   └── index.html           # Main SPA template
+│   └── index.html           # Main SPA template (dark theme UI)
 ├── static/                  # Static assets
 └── frontend/                # React frontend (optional)
     ├── package.json
+    ├── public/
     └── src/
 ```
 
 ## Common Commands
 
-### Backend Development
+### Run the App
 
 ```bash
-# Install dependencies
+# Install dependencies and run
 pip install -r requirements.txt
-
-# Run the Flask server
 python app.py
+
 # Server starts on http://localhost:8080
-
-# Run with environment variable for ElevenLabs (optional)
-ELEVENLABS_API_KEY=your_key python app.py
 ```
 
-### Docker Development
+### Docker
 
 ```bash
-# Build and run with Docker Compose
-docker-compose up --build
-
-# Run in detached mode
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
-```
-
-### Frontend Development (if using React)
-
-```bash
-cd frontend
-npm install
-npm start
-# Development server on http://localhost:3000
-
-npm run build
-# Builds to frontend/build/ for production
+docker-compose up --build      # Build and run
+docker-compose up -d           # Detached mode
+docker-compose logs -f         # View logs
+docker-compose down            # Stop
 ```
 
 ### Daytona Deployment
 
 ```bash
-# Create a new Daytona workspace
 daytona create .
-
-# Or from GitHub
-daytona create https://github.com/YOUR_USERNAME/Daytona_trading_agent
+# Or from GitHub:
+daytona create https://github.com/rishirevuri/Daytona_trading_agent
 ```
 
 ## Architecture
 
-### Flask Backend (`app.py`)
+### Core Components in `app.py`
 
-The entire backend is in a single `app.py` file with these components:
-
-- **NewsAnalyzer class** - Fetches and analyzes stock news sentiment
-- **Investment scoring algorithm** - Combines technical (70%) and fundamental (30%) analysis
-- **Stock screener** - Scans universe of stocks for buy/sell signals
+| Component | Lines | Description |
+|-----------|-------|-------------|
+| `NewsAnalyzer` | 59-161 | Fetches stock news via yfinance, analyzes sentiment |
+| `TechnicalAnalyzer` | 163-271 | Support/resistance levels, pattern detection |
+| `get_vix()` | 273-283 | Fetches VIX (fear index) from Yahoo Finance |
+| `get_market_sentiment()` | 285-354 | Aggregates VIX, treasury yields, S&P 500 trends |
+| `get_earnings_data()` | 388-443 | Historical earnings surprises, analyst targets |
+| `calculate_fundamental_score()` | 445-587 | P/E, PEG, margins, growth, ROE scoring |
+| `calculate_technical_score()` | 589-881 | RSI, MACD, Bollinger, Stochastic, ADX, etc. |
+| `calculate_investment_score()` | 986-1268 | Main scoring function (70% tech + 30% fundamental) |
+| `screen_stocks()` | 1270-1320 | Parallel screening of 100 stocks |
 
 ### API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Serves the main SPA |
-| `/api/analyze` | POST | Analyze a single stock (body: `{"ticker": "AAPL"}`) |
-| `/api/screen` | GET | Screen stocks (query: `filter=strong_buys&limit=20`) |
-| `/api/market-sentiment` | GET | Get VIX, treasury yields, market data |
-| `/api/news/<ticker>` | GET | Get news for a specific ticker |
+| `/api/analyze` | POST | Analyze stock: `{"ticker": "AAPL"}` |
+| `/api/screen` | GET | Screen stocks: `?filter=strong_buys&limit=20` |
+| `/api/market-sentiment` | GET | VIX, treasury yields, S&P 500 data |
 | `/api/speak` | POST | Text-to-speech via ElevenLabs (optional) |
 | `/health` | GET | Health check endpoint |
 
-### Technical Indicators Used
+### Screening Filters
 
-The scoring algorithm analyzes 15+ indicators:
-- **RSI** - Relative Strength Index (14-period)
-- **MACD** - Moving Average Convergence Divergence
-- **Moving Averages** - SMA 20/50/200, Golden/Death Cross
-- **Bollinger Bands** - Price position within bands
-- **Stochastic** - Stochastic Oscillator
-- **Williams %R** - Overbought/oversold indicator
-- **CCI** - Commodity Channel Index
-- **ADX** - Average Directional Index (trend strength)
-- **MFI** - Money Flow Index
-- **OBV** - On-Balance Volume
-- **VWAP** - Volume Weighted Average Price
+- `all` - All 100 stocks in universe
+- `strong_buys` - Score >= 75
+- `buys` - Score 60-74
+- `sells` - Score 30-44
+- `strong_sells` - Score < 30
+- `shorts` - Score < 40 (short candidates)
+
+### Technical Indicators (with weights)
+
+| Indicator | Weight | Function |
+|-----------|--------|----------|
+| RSI (14) | 10% | Overbought/oversold |
+| MACD | 10% | Trend momentum |
+| Moving Averages | 12% | SMA 20/50/200, Golden/Death Cross |
+| Earnings Surprise | 10% | Beat/miss history |
+| ADX | 8% | Trend strength |
+| Bollinger Bands | 8% | Volatility position |
+| Stochastic | 8% | Momentum oscillator |
+| VIX | 8% | Market fear gauge |
+| MFI | 6% | Money flow |
+| Williams %R | 5% | Overbought/oversold |
+| CCI | 5% | Price deviation |
+| OBV | 5% | Volume trend |
+| VWAP | 5% | Volume-weighted price |
 
 ### Score Interpretation
 
@@ -129,41 +122,42 @@ The scoring algorithm analyzes 15+ indicators:
 | 30-44 | SELL | Short with medium confidence |
 | 1-29 | STRONG SELL | Short with high confidence |
 
+## Stock Universe
+
+The screener analyzes 100 stocks across sectors:
+- **Tech**: AAPL, MSFT, GOOGL, NVDA, META, AMD, etc.
+- **Finance**: JPM, BAC, GS, V, MA, etc.
+- **Healthcare**: JNJ, UNH, PFE, LLY, etc.
+- **Consumer**: WMT, AMZN, HD, NKE, etc.
+- **Energy**: XOM, CVX, COP, SLB, etc.
+- **ETFs**: SPY, QQQ, IWM, XLF, XLE, etc.
+
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ELEVENLABS_API_KEY` | No | For text-to-speech feature |
-| `ELEVENLABS_VOICE_ID` | No | Voice ID for TTS (default: Adam) |
-| `FLASK_ENV` | No | Set to `development` for debug mode |
-| `API_PORT` | No | Port to run server (default: 8080) |
-
-## Data Sources
-
-All data is fetched in real-time via `yfinance`:
-- Historical price data for technical analysis
-- Fundamental data (P/E, margins, growth rates)
-- News and analyst recommendations
-- Earnings calendar and surprises
+| `ELEVENLABS_VOICE_ID` | No | Voice ID (default: Adam) |
 
 ## Dependencies
 
-Core Python packages:
-- `flask` - Web framework
-- `flask-cors` - CORS support
-- `yfinance` - Yahoo Finance data
-- `pandas` - Data manipulation
-- `numpy` - Numerical computing
-- `requests` - HTTP client
+```
+flask>=2.0.0
+flask-cors>=4.0.0
+yfinance>=0.2.0
+pandas>=1.5.0
+numpy>=1.21.0
+gunicorn>=21.0.0
+redis>=4.0.0
+```
 
-## Stateless Architecture
+## Key Implementation Details
 
-The application is completely stateless:
-- No database required
-- All analysis is computed on-demand
-- Results are not persisted
-- Each request is independent
+1. **Parallel Processing**: Stock screening uses `ThreadPoolExecutor` for concurrent analysis
+2. **Error Handling**: Each indicator calculation is wrapped in try/except to prevent single failures from crashing analysis
+3. **Caching**: No caching - all data fetched fresh from Yahoo Finance
+4. **Rate Limiting**: None implemented - relies on yfinance's built-in handling
 
 ## Disclaimer
 
-This tool is for educational purposes only. Investment scores and recommendations are based on technical and fundamental analysis and should not be considered financial advice.
+Educational purposes only. Not financial advice.

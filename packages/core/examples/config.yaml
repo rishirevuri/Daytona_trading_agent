@@ -1,0 +1,28 @@
+# Example experiment configuration for SignalOps
+# Run with: signalops run examples/config.yaml
+
+# Data configuration
+data:
+  source: yahoo
+  symbol: SPY
+  period: 5y
+
+# Strategy configuration
+strategy:
+  type: moving_average
+  short_window: 20
+  long_window: 50
+  ma_type: sma
+  commission: 0.001
+  slippage: 0.0005
+
+# Backtest configuration
+backtest:
+  initial_capital: 100000
+  train_ratio: 0.7
+
+# Sentry configuration (optional)
+sentry:
+  enabled: false
+  # dsn: your-sentry-dsn
+  # environment: development

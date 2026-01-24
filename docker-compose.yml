@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/signalops
+      - DAYTONA_API_KEY=${DAYTONA_API_KEY}
+      - DAYTONA_BASE_URL=${DAYTONA_BASE_URL}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_REPO=${GITHUB_REPO}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+    depends_on:
+      - db
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+
+  core:
+    build:
+      context: ./packages/core
+      dockerfile: Dockerfile
+    environment:
+      - SENTRY_DSN=${SENTRY_DSN}
+    volumes:
+      - ./packages/core:/app
+      - ./data:/data
+
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=signalops
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

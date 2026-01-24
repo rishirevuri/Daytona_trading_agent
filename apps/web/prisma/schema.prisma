@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Strategy {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  code        String   // Strategy code content
+  config      String   // JSON config for parameters
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  runs        Run[]
+}
+
+model Run {
+  id            String    @id @default(cuid())
+  strategyId    String
+  strategy      Strategy  @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  status        String    @default("pending") // pending, running, completed, failed
+  config        String    // JSON config used for this run
+
+  // Daytona integration
+  sandboxId     String?   // Daytona sandbox ID
+  snapshotId    String?   // Daytona snapshot ID for reproducibility
+  imageDigest   String?   // Docker image SHA for environment fingerprint
+
+  // Metrics (stored as JSON for flexibility)
+  metrics       String?   // JSON: { sharpe, sortino, maxDrawdown, cagr, pbo, ... }
+
+  // Git integration
+  commitSha     String?
+  branchName    String?
+  prNumber      Int?
+  prUrl         String?
+
+  // Sentry integration
+  sentryTraceId String?
+
+  // Timestamps
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  artifacts     Artifact[]
+  logs          Log[]
+}
+
+model Artifact {
+  id        String   @id @default(cuid())
+  runId     String
+  run       Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  type      String   // report, metrics, returns, manifest, audio
+  filename  String
+  path      String   // Storage path or URL
+  mimeType  String?
+  size      Int?
+  createdAt DateTime @default(now())
+}
+
+model Log {
+  id        String   @id @default(cuid())
+  runId     String
+  run       Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  level     String   @default("info") // debug, info, warn, error
+  message   String
+  metadata  String?  // JSON for additional context
+  timestamp DateTime @default(now())
+
+  @@index([runId, timestamp])
+}
+
+model DatasetVersion {
+  id         String   @id @default(cuid())
+  name       String   // e.g., "sp500_daily"
+  version    String   // e.g., "2024-01-15"
+  checksum   String   // SHA256 of the data file
+  path       String   // Storage path
+  rowCount   Int?
+  dateRange  String?  // JSON: { start, end }
+  createdAt  DateTime @default(now())
+
+  @@unique([name, version])
+}

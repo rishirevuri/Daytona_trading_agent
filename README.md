@@ -1,6 +1,8 @@
 # Investment Scorer
 
-AI-Powered Investment Scoring Application that analyzes stocks and ETFs using technical and fundamental indicators.
+**Investment Scorer** is an intelligent stock analysis platform designed to give traders a clear edge. It instantly calculates a comprehensive **Investment Score (1-100)** for any stock or ETF by synthesizing **Technical Analysis, Fundamental Data, and Market Sentiment** into a single actionable metric.
+
+Whether you are a day trader or long-term investor, Investment Scorer helps you cut through the noise with clear **Buy/Sell recommendations**, real-time data, and AI-driven insights.
 
 ## Features
 
@@ -29,6 +31,7 @@ python app.py
 This project is configured for [Daytona](https://www.daytona.io/) cloud development environments.
 
 ### Prerequisites
+
 - Daytona CLI installed
 - Daytona account configured
 
@@ -51,6 +54,7 @@ daytona create .
 ### Daytona Configuration
 
 The project includes:
+
 - `.devcontainer/devcontainer.json` - Dev container configuration
 - `.daytona/config.yaml` - Daytona workspace settings
 - `docker-compose.yml` - Multi-service orchestration
@@ -59,6 +63,7 @@ The project includes:
 ## API Endpoints
 
 ### Analyze Stock
+
 ```bash
 POST /api/analyze
 Content-Type: application/json
@@ -66,12 +71,14 @@ Content-Type: application/json
 ```
 
 ### Screen Stocks
+
 ```bash
 GET /api/screen?filter=strong_buys&limit=20
 # Filters: all, strong_buys, buys, sells, strong_sells, shorts
 ```
 
 ### Market Sentiment
+
 ```bash
 GET /api/market-sentiment
 ```
@@ -79,42 +86,45 @@ GET /api/market-sentiment
 ## Scoring Algorithm
 
 The investment score combines:
+
 - **65% Technical Score** (weighted average of indicators)
 - **35% Fundamental Score** (earnings, margins, growth)
 
 ### Score Interpretation
-| Score | Recommendation | Action |
-|-------|---------------|--------|
-| 75-100 | STRONG BUY | Long with high confidence |
-| 60-74 | BUY | Long with medium confidence |
-| 45-59 | HOLD | Wait for clearer signals |
-| 30-44 | SELL | Short with medium confidence |
-| 1-29 | STRONG SELL | Short with high confidence |
+
+| Score  | Recommendation | Action                       |
+| ------ | -------------- | ---------------------------- |
+| 75-100 | STRONG BUY     | Long with high confidence    |
+| 60-74  | BUY            | Long with medium confidence  |
+| 45-59  | HOLD           | Wait for clearer signals     |
+| 30-44  | SELL           | Short with medium confidence |
+| 1-29   | STRONG SELL    | Short with high confidence   |
 
 ## Technical Indicators Used
 
-| Indicator | Weight | Description |
-|-----------|--------|-------------|
-| Candlestick Patterns | 16% | Pattern detection and trend analysis |
-| Earnings | 10% | Historical earnings surprises |
-| Moving Averages | 9% | SMA 20/50/200, Golden/Death Cross |
-| VIX | 8% | Market fear gauge |
-| RSI | 7% | Relative Strength Index (14-period) |
-| MACD | 7% | Moving Average Convergence Divergence |
-| News Sentiment | 7% | NLP-based news sentiment |
-| ADX | 5% | Average Directional Index (trend strength) |
-| Bollinger Bands | 5% | Price position within bands |
-| Stochastic | 5% | Stochastic Oscillator |
-| MFI | 4% | Money Flow Index |
-| OBV | 4% | On-Balance Volume |
-| Williams %R | 3% | Overbought/oversold |
-| CCI | 3% | Commodity Channel Index |
-| VWAP | 3% | Volume Weighted Average Price |
-| Consumer Sentiment | 4% | Retail sentiment analysis |
+| Indicator            | Weight | Description                                |
+| -------------------- | ------ | ------------------------------------------ |
+| Candlestick Patterns | 16%    | Pattern detection and trend analysis       |
+| Earnings             | 10%    | Historical earnings surprises              |
+| Moving Averages      | 9%     | SMA 20/50/200, Golden/Death Cross          |
+| VIX                  | 8%     | Market fear gauge                          |
+| RSI                  | 7%     | Relative Strength Index (14-period)        |
+| MACD                 | 7%     | Moving Average Convergence Divergence      |
+| News Sentiment       | 7%     | NLP-based news sentiment                   |
+| ADX                  | 5%     | Average Directional Index (trend strength) |
+| Bollinger Bands      | 5%     | Price position within bands                |
+| Stochastic           | 5%     | Stochastic Oscillator                      |
+| MFI                  | 4%     | Money Flow Index                           |
+| OBV                  | 4%     | On-Balance Volume                          |
+| Williams %R          | 3%     | Overbought/oversold                        |
+| CCI                  | 3%     | Commodity Channel Index                    |
+| VWAP                 | 3%     | Volume Weighted Average Price              |
+| Consumer Sentiment   | 4%     | Retail sentiment analysis                  |
 
 ## New: Market Snapshot Dashboard
 
 The landing page now features a comprehensive Market Snapshot:
+
 - **Market Sentiment Bar**: VIX, Fear/Greed Index, S&P 500 trend, Treasury yields
 - **Top BUY Signals**: Stocks with highest investment scores
 - **Short Candidates**: Stocks with lowest scores for short opportunities
@@ -135,36 +145,30 @@ GET /api/stock/AAPL/chart
 GET /stock/AAPL
 ```
 
-## Install as Native App
+## 📱 Install as Native App (PWA)
 
-Investment Scorer is a Progressive Web App (PWA) that can be installed on any device for a native app experience.
+Investment Scorer is a **Progressive Web App (PWA)**. You can install it directly to your home screen on iOS, Android, macOS, and Windows for a full-screen, native, and offline-capable experience.
 
-### Mac (Chrome/Edge)
-1. Open the app in Chrome or Edge
-2. Click the install icon (+) in the address bar
-3. Click "Install"
+### **iOS (iPhone & iPad)**
 
-### Windows (Chrome/Edge)
-1. Open the app in Chrome or Edge
-2. Click the menu button and select "Install Investment Scorer"
-3. Click "Install"
+1. Open the website in **Safari**
+2. Tap the **Share** button (square with arrow up)
+3. Scroll down and tap **"Add to Home Screen"**
+4. Tap **"Add"** in the top right
 
-### Linux (Chrome)
-1. Open the app in Chrome
-2. Click the menu button and select "Install Investment Scorer"
-3. Click "Install"
+### **Android (Chrome)**
 
-### iOS (Safari)
-1. Open the app in Safari
-2. Tap the Share button
-3. Scroll down and tap "Add to Home Screen"
-4. Tap "Add"
+1. Open the website in **Chrome**
+2. Tap the **Menu** button (three dots)
+3. Tap **"Install app"** or **"Add to Home Screen"**
+4. Confirm by tapping **"Install"**
 
-### Android (Chrome)
-1. Open the app in Chrome
-2. Tap the menu button
-3. Tap "Add to Home Screen" or "Install app"
-4. Tap "Install"
+### **Mac & Windows (Chrome/Edge)**
+
+1. Open the website in your browser
+2. Look for the **Install icon** (monitor with arrow) in the address bar (right side)
+3. Click **"Install"**
+4. The app will launch in its own window via Chrome/Edge
 
 ## PWA Features
 

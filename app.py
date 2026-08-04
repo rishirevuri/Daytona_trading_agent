@@ -12,8 +12,184 @@ import re
 from collections import defaultdict
 import time
 import threading
+import logging
+import math
+import uuid
+import hmac
+
+# Runtime configuration is intentionally environment-driven.  In particular,
+# provider fallbacks are opt-in so a production dashboard cannot quietly show
+# stale demo quotes as if they were live market data.
+DEBUG = os.environ.get('FLASK_DEBUG', '').lower() in {'1', 'true', 'yes'}
+APP_ENV = os.environ.get(
+    'APP_ENV',
+    os.environ.get('FLASK_ENV', 'development' if DEBUG else 'production'),
+).lower()
+ALLOW_FALLBACK_MARKET_DATA = os.environ.get('ALLOW_FALLBACK_MARKET_DATA', '').lower() in {
+    '1', 'true', 'yes'
+}
+SERVE_REACT_FRONTEND = os.environ.get('SERVE_REACT_FRONTEND', '').lower() in {'1', 'true', 'yes'}
+ADMIN_API_TOKEN = os.environ.get('ADMIN_API_TOKEN', '')
+ADMIN_REQUIRED_ENVS = {'production', 'staging'}
+try:
+    REQUEST_TIMEOUT_SECONDS = max(
+        1.0, min(30.0, float(os.environ.get('MARKET_DATA_TIMEOUT_SECONDS', '10')))
+    )
+except (TypeError, ValueError):
+    REQUEST_TIMEOUT_SECONDS = 10.0
+MAX_TICKER_LENGTH = 16
+MAX_SPEECH_LENGTH = 2000
+MAX_SCREEN_LIMIT = 50
+ALLOWED_SCREEN_FILTERS = {'all', 'strong_buys', 'buys', 'sells', 'strong_sells', 'shorts'}
 
 app = Flask(__name__, static_folder='frontend/build', static_url_path='')
+app.config.update(
+    ENV=APP_ENV,
+    DEBUG=DEBUG,
+    MAX_CONTENT_LENGTH=1 * 1024 * 1024,
+    JSON_SORT_KEYS=False,
+)
+logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO').upper())
+logger = logging.getLogger('stockpulse')
+
+
+def _json_error(message, status=400, code='bad_request'):
+    """Return one consistent, client-safe error envelope."""
+    return jsonify({'error': message, 'code': code}), status
+
+
+def _safe_json_body():
+    """Read a JSON object without allowing malformed bodies to raise a 500."""
+    payload = request.get_json(silent=True)
+    return payload if isinstance(payload, dict) else None
+
+
+def _finite_positive_number(value):
+    """Coerce a positive finite number, returning None for invalid input."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) and number > 0 else None
+
+
+def _finite_number(value):
+    """Coerce a finite numeric provider value, preserving missing data as None."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _as_percentage(value):
+    """Normalize provider ratios or percentages to a display percentage."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    # Yahoo has returned both 0.0036 and 0.36 for a 0.36% yield over time.
+    return round(number if abs(number) > 1.5 else number * 100, 2)
+
+
+def _as_dividend_percentage(info):
+    """Prefer the provider's dividend rate/price calculation when available."""
+    try:
+        rate = float(info.get('dividendRate'))
+        price = float(info.get('currentPrice') or info.get('regularMarketPrice'))
+        if math.isfinite(rate) and math.isfinite(price) and price > 0:
+            return round(rate / price * 100, 2)
+    except (TypeError, ValueError):
+        pass
+    raw = info.get('dividendYield')
+    try:
+        raw_number = float(raw)
+        if math.isfinite(raw_number):
+            # Yahoo has returned this field as either a ratio (0.0036) or an
+            # already-scaled percentage (0.36). Very small values are ratios;
+            # ordinary display percentages should not be multiplied again.
+            return round(raw_number * 100, 2) if abs(raw_number) < 0.1 else round(raw_number, 2)
+    except (TypeError, ValueError):
+        pass
+    return _as_percentage(raw)
+
+
+def _request_id():
+    request_id = request.environ.get('stockpulse.request_id')
+    if request_id:
+        return request_id
+    supplied_request_id = request.headers.get('X-Request-ID', '').strip()
+    if re.fullmatch(r'[A-Za-z0-9._:-]{1,80}', supplied_request_id):
+        request_id = supplied_request_id
+    else:
+        request_id = uuid.uuid4().hex[:16]
+    request.environ['stockpulse.request_id'] = request_id
+    return request_id
+
+
+def _admin_guard():
+    """Fail closed for production mutations when admin auth is not configured."""
+    if not ADMIN_API_TOKEN:
+        if APP_ENV in ADMIN_REQUIRED_ENVS and not app.config.get('TESTING'):
+            return _json_error(
+                'Admin authorization is not configured for this environment',
+                503,
+                'admin_not_configured',
+            )
+        return None
+    supplied_token = request.headers.get('X-Admin-Token', '')
+    if not hmac.compare_digest(supplied_token, ADMIN_API_TOKEN):
+        return _json_error('Admin authorization required', 403, 'forbidden')
+    return None
+
+
+def _clean_quote(quote):
+    """Normalize provider quote values before they reach JSON responses."""
+    if not isinstance(quote, dict):
+        return None
+    price = _finite_positive_number(quote.get('price'))
+    if price is None:
+        return None
+    cleaned = dict(quote)
+    cleaned['price'] = price
+    cleaned['change'] = _finite_number(quote.get('change'))
+    cleaned['change_pct'] = _finite_number(quote.get('change_pct'))
+    cleaned['source'] = quote.get('source') or 'unknown'
+    cleaned['stale'] = bool(quote.get('stale', False))
+    cleaned['as_of'] = quote.get('as_of')
+    return cleaned
+
+
+def _quote_data_status(records):
+    """Summarize live, fallback, partial, and unavailable quote records."""
+    records = [record for record in records if isinstance(record, dict)]
+    available = [
+        record for record in records
+        if _finite_positive_number(record.get('current_price', record.get('price'))) is not None
+    ]
+    if not available:
+        return 'unavailable'
+    has_stale = any(record.get('stale') for record in available)
+    has_live = any(not record.get('stale') for record in available)
+    has_missing = len(available) < len(records)
+    if has_stale and not has_live:
+        return 'fallback'
+    if has_stale or has_missing:
+        return 'partial'
+    return 'live'
+
+
+def _quote_data_mode(records, status):
+    """Expose whether quote payloads are live, fallback, or unavailable."""
+    if status == 'unavailable':
+        return 'unavailable'
+    if status == 'fallback' or any(
+        isinstance(record, dict) and record.get('stale') for record in records
+    ):
+        return 'fallback'
+    return 'live'
 
 
 # ============== CACHING SYSTEM ==============
@@ -79,20 +255,24 @@ def get_cached_history(symbol, period="1y"):
             stooq_df = stooq_df.copy()
             stooq_df['Date'] = pd.to_datetime(stooq_df['Date'])
             stooq_df.set_index('Date', inplace=True)
+            stooq_df.attrs['data_source'] = 'stooq'
+            stooq_df.attrs['stale'] = False
             _ticker_cache.set(cache_key, stooq_df, ttl=3600)  # 1 hour cache
             return stooq_df
-    except Exception as e:
-        pass
+    except Exception as exc:
+        logger.warning('Stooq history failed for %s (%s): %s', symbol, period, exc)
 
     # Fallback to yfinance
     try:
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=period)
         if hist is not None and not hist.empty:
+            hist.attrs['data_source'] = 'yahoo_finance'
+            hist.attrs['stale'] = False
             _ticker_cache.set(cache_key, hist, ttl=3600)  # 1 hour cache
             return hist
-    except Exception as e:
-        pass
+    except Exception as exc:
+        logger.warning('Yahoo history failed for %s (%s): %s', symbol, period, exc)
 
     return pd.DataFrame()  # Return empty DataFrame if both fail
 
@@ -110,8 +290,8 @@ def get_cached_info(symbol):
         if info:
             _ticker_cache.set(cache_key, info, ttl=7200)  # 2 hour cache for info
             return info
-    except Exception as e:
-        pass
+    except Exception as exc:
+        logger.warning('Ticker info failed for %s: %s', symbol, exc)
 
     return {}  # Return empty dict if fails
 
@@ -123,8 +303,12 @@ def get_cached_news(symbol):
     if cached is not None:
         return cached
 
-    ticker = yf.Ticker(symbol)
-    news = ticker.news
+    try:
+        ticker = yf.Ticker(symbol)
+        news = ticker.news
+    except Exception as exc:
+        logger.warning('news provider failed for %s: %s', symbol, exc)
+        news = []
     _ticker_cache.set(cache_key, news, ttl=600)  # 10 min cache for news
     return news
 
@@ -149,18 +333,24 @@ def get_stooq_data(symbol, days=7):
                 stooq_symbol = f"{stooq_symbol}.US"
 
         url = f'https://stooq.com/q/d/l/?s={stooq_symbol}&i=d'
-        response = requests.get(url, timeout=10)
+        response = requests.get(
+            url,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            headers={'User-Agent': 'StockPulse/1.0 (+market-data-client)'},
+        )
 
         if response.status_code == 200 and len(response.text) > 50:
             from io import StringIO
             df = pd.read_csv(StringIO(response.text))
-            if not df.empty and 'Close' in df.columns:
+            if not df.empty and {'Date', 'Close'}.issubset(df.columns):
+                df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
+                df = df.dropna(subset=['Close'])
                 # Get last N days
                 df = df.tail(days)
                 _ticker_cache.set(cache_key, df, ttl=300)  # 5 min cache
                 return df
-    except Exception as e:
-        pass
+    except Exception as exc:
+        logger.warning('Stooq request failed for %s: %s', symbol, exc)
 
     return None
 
@@ -170,32 +360,46 @@ def get_stooq_quote(symbol):
     # Try Stooq first
     df = get_stooq_data(symbol, days=5)
     if df is not None and len(df) >= 2:
-        current = df.iloc[-1]['Close']
-        prev = df.iloc[-2]['Close']
-        change = current - prev
-        change_pct = ((current - prev) / prev) * 100
-        return {
-            'price': round(current, 2),
-            'change': round(change, 2),
-            'change_pct': round(change_pct, 2)
-        }
+        current = _finite_positive_number(df.iloc[-1]['Close'])
+        prev = _finite_positive_number(df.iloc[-2]['Close'])
+        if current is not None:
+            change = _finite_number(current - prev) if prev is not None else None
+            change_pct = (
+                _finite_number((current - prev) / prev * 100)
+                if prev is not None else None
+            )
+            return _clean_quote({
+                'price': current,
+                'change': change,
+                'change_pct': change_pct,
+                'source': 'stooq',
+                'stale': False,
+                'as_of': datetime.now().isoformat(timespec='seconds'),
+            })
 
     # Fallback to Yahoo Finance
     try:
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period='5d')
         if hist is not None and len(hist) >= 2:
-            current = hist['Close'].iloc[-1]
-            prev = hist['Close'].iloc[-2]
-            change = current - prev
-            change_pct = ((current - prev) / prev) * 100
-            return {
-                'price': round(current, 2),
-                'change': round(change, 2),
-                'change_pct': round(change_pct, 2)
-            }
-    except:
-        pass
+            current = _finite_positive_number(hist['Close'].iloc[-1])
+            prev = _finite_positive_number(hist['Close'].iloc[-2])
+            if current is not None:
+                change = _finite_number(current - prev) if prev is not None else None
+                change_pct = (
+                    _finite_number((current - prev) / prev * 100)
+                    if prev is not None else None
+                )
+                return _clean_quote({
+                    'price': current,
+                    'change': change,
+                    'change_pct': change_pct,
+                    'source': 'yahoo_finance',
+                    'stale': False,
+                    'as_of': datetime.now().isoformat(timespec='seconds'),
+                })
+    except Exception as exc:
+        logger.warning('Yahoo quote request failed for %s: %s', symbol, exc)
 
     return None
 
@@ -206,8 +410,10 @@ FALLBACK_MARKET_DATA = {
     'QQQ': {'price': 622.72, 'change': 1.96, 'change_pct': 0.32},
     'VOO': {'price': 633.83, 'change': 0.26, 'change_pct': 0.04},
     '^SPX': {'price': 6118.71, 'change': 2.26, 'change_pct': 0.04},
+    '^GSPC': {'price': 6118.71, 'change': 2.26, 'change_pct': 0.04},
     '^DJI': {'price': 44424.25, 'change': -140.82, 'change_pct': -0.32},
     '^NDQ': {'price': 21774.21, 'change': 99.66, 'change_pct': 0.46},
+    '^IXIC': {'price': 21774.21, 'change': 99.66, 'change_pct': 0.46},
     '^VIX': {'price': 18.21, 'change': -0.5, 'change_pct': -2.67},
     '^TNX': {'price': 4.52, 'change': 0.02, 'change_pct': 0.44},
     'AAPL': {'price': 222.64, 'change': -0.77, 'change_pct': -0.34},
@@ -259,7 +465,7 @@ FALLBACK_MARKET_DATA = {
 
 
 def get_quote_with_fallback(symbol):
-    """Get quote with multiple fallbacks"""
+    """Get a quote and expose its provenance to every caller."""
     # Check cache first
     cache_key = f"quote_{symbol}"
     cached = _ticker_cache.get(cache_key)
@@ -267,14 +473,21 @@ def get_quote_with_fallback(symbol):
         return cached
 
     # Try live data
-    quote = get_stooq_quote(symbol)
+    quote = _clean_quote(get_stooq_quote(symbol))
     if quote:
         _ticker_cache.set(cache_key, quote, ttl=300)
         return quote
 
-    # Use fallback data
-    if symbol in FALLBACK_MARKET_DATA:
-        return FALLBACK_MARKET_DATA[symbol]
+    # Stale values are useful for an explicitly configured demo/offline mode,
+    # but must never be silently presented as real-time production data.
+    if ALLOW_FALLBACK_MARKET_DATA and symbol in FALLBACK_MARKET_DATA:
+        fallback = dict(FALLBACK_MARKET_DATA[symbol])
+        fallback.update({
+            'source': 'configured_fallback',
+            'stale': True,
+            'as_of': None,
+        })
+        return _clean_quote(fallback)
 
     return None
 
@@ -291,7 +504,8 @@ def get_cached_calendar(symbol):
         calendar = ticker.calendar
         _ticker_cache.set(cache_key, calendar, ttl=1800)  # 30 min cache for calendar
         return calendar
-    except:
+    except Exception as exc:
+        logger.warning('Unable to load earnings calendar for %s: %s', symbol, exc)
         _ticker_cache.set(cache_key, None, ttl=1800)  # Cache failures too
         return None
 
@@ -309,8 +523,24 @@ INDEX_SYMBOLS = {'DJI', 'GSPC', 'IXIC', 'RUT', 'VIX', 'TNX', 'TYX', 'FVX', 'IRX'
 
 
 def normalize_ticker(ticker):
-    """Normalize ticker symbol - add ^ prefix for index symbols if missing"""
-    ticker_upper = ticker.upper().strip()
+    """Normalize and validate a provider-safe ticker symbol.
+
+    Yahoo/Stooq symbols may contain ``^``, ``.``, ``-`` and ``=`` (for
+    indices, share classes, and futures), but never a slash, whitespace, or
+    arbitrary path characters.  Rejecting those values at the boundary keeps
+    the provider URL and the stock detail route predictable.
+    """
+    if not isinstance(ticker, str):
+        raise ValueError('Ticker must be a string')
+    ticker_upper = ticker.strip().lstrip('$').upper()
+    if not ticker_upper or len(ticker_upper) > MAX_TICKER_LENGTH:
+        raise ValueError('Ticker must be 1-16 characters')
+    if ticker_upper.startswith('^'):
+        valid = re.fullmatch(r'\^[A-Z0-9][A-Z0-9._=-]{0,14}', ticker_upper)
+    else:
+        valid = re.fullmatch(r'[A-Z0-9][A-Z0-9._=-]{0,15}', ticker_upper)
+    if not valid:
+        raise ValueError('Ticker contains unsupported characters')
     # If it already has ^, return as-is
     if ticker_upper.startswith('^'):
         return ticker_upper
@@ -322,7 +552,43 @@ def normalize_ticker(ticker):
 
 # ============== END INDEX SYMBOL NORMALIZATION ==============
 
-CORS(app)
+# Keep cross-origin access opt-in for deployments that put the API behind a
+# separate frontend.  The local same-origin dashboard does not need CORS.
+configured_origins = [origin.strip() for origin in os.environ.get('CORS_ORIGINS', '').split(',') if origin.strip()]
+if configured_origins:
+    CORS(app, resources={r'/api/*': {'origins': configured_origins}})
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers.setdefault('X-Request-ID', _request_id())
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=()')
+    if request.path.startswith('/api/'):
+        response.headers.setdefault('Cache-Control', 'no-store')
+    return response
+
+
+@app.errorhandler(413)
+def request_too_large(_error):
+    return _json_error('Request body is too large', 413, 'request_too_large')
+
+
+@app.errorhandler(404)
+def not_found(e):
+    # Preserve SPA-style navigation only for browser page requests.  API
+    # clients must receive a real 404 instead of an HTML document.
+    if request.path.startswith('/api/'):
+        return _json_error('Resource not found', 404, 'not_found')
+    return render_template('index.html'), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.exception('Unhandled request failure%s', f' [{_request_id()}]' if _request_id() else '')
+    return _json_error('The server could not complete that request', 500, 'internal_error')
 
 # ElevenLabs Configuration
 ELEVENLABS_API_KEY = os.environ.get('ELEVENLABS_API_KEY', '')
@@ -386,33 +652,29 @@ class TradingSimulator:
     INITIAL_CAPITAL = 100000.0
 
     def __init__(self):
+        self._lock = threading.RLock()
         self.reset()
 
     def reset(self):
         """Reset simulation to initial state"""
-        self.cash = self.INITIAL_CAPITAL
-        self.positions = {}  # {ticker: {quantity, avg_price, side, entry_date}}
-        self.trade_log = []  # List of executed trades
-        self.portfolio_history = []  # {timestamp, total_value, spy_price}
-        self.spy_start_price = None
-        self._record_initial_snapshot()
+        with self._lock:
+            self.cash = self.INITIAL_CAPITAL
+            self.positions = {}  # {ticker: {quantity, avg_price, side, entry_date}}
+            self.trade_log = []  # List of executed trades
+            self.portfolio_history = []  # {timestamp, total_value, spy_price}
+            self.spy_start_price = None
+            self._record_initial_snapshot()
 
     def _record_initial_snapshot(self):
-        """Record initial portfolio state with SPY benchmark"""
-        try:
-            spy = yf.Ticker('SPY')
-            spy_hist = spy.history(period='1d')
-            if not spy_hist.empty:
-                self.spy_start_price = spy_hist['Close'].iloc[-1]
-        except:
-            self.spy_start_price = 500.0  # Fallback
-
+        """Record a zero-risk initial snapshot; benchmark data is lazy-loaded."""
         self.portfolio_history.append({
             'timestamp': datetime.now().isoformat(),
             'total_value': self.cash,
             'spy_price': self.spy_start_price,
             'cash': self.cash,
-            'positions_value': 0
+            'positions_value': 0,
+            'data_status': 'live',
+            'benchmark_status': 'unavailable',
         })
 
     def get_current_price(self, ticker):
@@ -420,19 +682,24 @@ class TradingSimulator:
         try:
             hist = get_cached_history(ticker, period='1d')
             if not hist.empty:
-                return hist['Close'].iloc[-1]
-        except:
-            pass
+                return float(hist['Close'].iloc[-1])
+        except Exception as exc:
+            logger.debug('Unable to refresh price for %s: %s', ticker, exc)
         return None
 
     def get_portfolio_value(self):
+        with self._lock:
+            return self._get_portfolio_value_unlocked()
+
+    def _get_portfolio_value_unlocked(self):
         """Calculate total portfolio value (cash + positions)"""
         positions_value = 0
         position_details = []
+        has_unpriced_position = False
 
         for ticker, pos in self.positions.items():
             current_price = self.get_current_price(ticker)
-            if current_price:
+            if current_price is not None and math.isfinite(current_price) and current_price > 0:
                 if pos['side'] == 'long':
                     value = pos['quantity'] * current_price
                     pnl = (current_price - pos['avg_price']) * pos['quantity']
@@ -456,11 +723,50 @@ class TradingSimulator:
                     'entry_date': pos.get('entry_date', 'N/A'),
                     'human_controlled': pos.get('human_controlled', False)
                 })
+            else:
+                has_unpriced_position = True
+                position_details.append({
+                    'ticker': ticker,
+                    'side': pos['side'],
+                    'quantity': pos['quantity'],
+                    'avg_price': round(pos['avg_price'], 2),
+                    'current_price': None,
+                    'value': None,
+                    'pnl': None,
+                    'pnl_pct': None,
+                    'entry_date': pos.get('entry_date', 'N/A'),
+                    'human_controlled': pos.get('human_controlled', False),
+                    'data_status': 'unavailable',
+                })
 
+        if has_unpriced_position:
+            return None, None, position_details
         total_value = self.cash + positions_value
         return total_value, positions_value, position_details
 
     def execute_trade(self, trade_type, ticker, quantity, price, reasoning, side='long', is_manual=False):
+        """Validate and atomically execute a paper trade."""
+        try:
+            ticker = normalize_ticker(ticker)
+        except ValueError as exc:
+            return {'status': 'rejected', 'error': str(exc), 'type': trade_type, 'ticker': ticker}
+        quantity_value = _finite_positive_number(quantity)
+        price_value = _finite_positive_number(price)
+        if quantity_value is None or price_value is None:
+            return {
+                'status': 'rejected',
+                'error': 'quantity and price must be positive finite numbers',
+                'type': trade_type,
+                'ticker': ticker,
+            }
+        if not isinstance(trade_type, str) or trade_type not in {'buy', 'sell', 'short', 'cover'}:
+            return {'status': 'rejected', 'error': 'Unsupported trade type', 'type': trade_type, 'ticker': ticker}
+        with self._lock:
+            return self._execute_trade_unlocked(
+                trade_type, ticker, quantity_value, price_value, reasoning, side, is_manual
+            )
+
+    def _execute_trade_unlocked(self, trade_type, ticker, quantity, price, reasoning, side='long', is_manual=False):
         """
         Execute a trade and log it.
         trade_type: 'buy', 'sell', 'short', 'cover'
@@ -482,7 +788,10 @@ class TradingSimulator:
         }
 
         if trade_type == 'buy':
-            if trade_value > self.cash:
+            if ticker in self.positions and self.positions[ticker]['side'] != 'long':
+                trade['status'] = 'rejected'
+                trade['error'] = 'Close the short position before buying this ticker'
+            elif trade_value > self.cash:
                 trade['status'] = 'rejected'
                 trade['error'] = 'Insufficient funds'
             else:
@@ -526,7 +835,10 @@ class TradingSimulator:
 
         elif trade_type == 'short':
             # Short selling - borrow and sell
-            if trade_value > self.cash * 2:  # 50% margin requirement
+            if ticker in self.positions and self.positions[ticker]['side'] != 'short':
+                trade['status'] = 'rejected'
+                trade['error'] = 'Close the long position before shorting this ticker'
+            elif trade_value > self.cash * 2:  # 50% margin requirement
                 trade['status'] = 'rejected'
                 trade['error'] = 'Insufficient margin'
             else:
@@ -578,7 +890,8 @@ class TradingSimulator:
 
     def record_portfolio_snapshot(self):
         """Record current portfolio state for history tracking"""
-        total_value, positions_value, _ = self.get_portfolio_value()
+        with self._lock:
+            total_value, positions_value, _ = self._get_portfolio_value_unlocked()
 
         # Get current SPY price for benchmark
         spy_price = self.spy_start_price
@@ -586,48 +899,67 @@ class TradingSimulator:
             spy_hist = get_cached_history('SPY', period='1d')
             if not spy_hist.empty:
                 spy_price = spy_hist['Close'].iloc[-1]
-        except:
-            pass
+        except Exception as exc:
+            logger.warning('Unable to refresh SPY benchmark for snapshot: %s', exc)
 
-        self.portfolio_history.append({
-            'timestamp': datetime.now().isoformat(),
-            'total_value': round(total_value, 2),
-            'spy_price': round(spy_price, 2) if spy_price else None,
-            'cash': round(self.cash, 2),
-            'positions_value': round(positions_value, 2)
-        })
+        with self._lock:
+            spy_price = _finite_positive_number(spy_price)
+            if spy_price is not None and self.spy_start_price is None:
+                self.spy_start_price = spy_price
+                if self.portfolio_history:
+                    self.portfolio_history[0]['spy_price'] = spy_price
+            self.portfolio_history.append({
+                'timestamp': datetime.now().isoformat(),
+                'total_value': round(total_value, 2) if total_value is not None else None,
+                'spy_price': round(spy_price, 2) if spy_price is not None else None,
+                'cash': round(self.cash, 2),
+                'positions_value': round(positions_value, 2) if positions_value is not None else None,
+                'data_status': 'live' if total_value is not None else 'unavailable',
+                'benchmark_status': 'live' if self.spy_start_price and spy_price is not None else 'unavailable',
+            })
 
     def get_status(self):
         """Get complete simulation status"""
-        total_value, positions_value, position_details = self.get_portfolio_value()
-        total_return = ((total_value - self.INITIAL_CAPITAL) / self.INITIAL_CAPITAL) * 100
+        with self._lock:
+            total_value, positions_value, position_details = self._get_portfolio_value_unlocked()
+        total_return = (
+            ((total_value - self.INITIAL_CAPITAL) / self.INITIAL_CAPITAL) * 100
+            if total_value is not None else None
+        )
 
         # Calculate S&P 500 return for comparison
-        spy_return = 0
+        spy_return = None
         current_spy_price = None
         try:
-            spy_hist = get_cached_history('SPY', period='1d')
-            if not spy_hist.empty:
-                current_spy_price = spy_hist['Close'].iloc[-1]
-                if self.spy_start_price:
-                    spy_return = ((current_spy_price - self.spy_start_price) / self.spy_start_price) * 100
-        except:
-            pass
+            current_spy_price = self.get_current_price('SPY')
+            current_spy_price = _finite_positive_number(current_spy_price)
+            with self._lock:
+                if current_spy_price is not None and self.spy_start_price is None:
+                    self.spy_start_price = current_spy_price
+                    if self.portfolio_history:
+                        self.portfolio_history[0]['spy_price'] = current_spy_price
+                        self.portfolio_history[0]['benchmark_status'] = 'live'
+            if current_spy_price is not None and self.spy_start_price:
+                spy_return = ((current_spy_price - self.spy_start_price) / self.spy_start_price) * 100
+        except Exception as exc:
+            logger.warning('Unable to refresh SPY benchmark: %s', exc)
 
-        alpha = total_return - spy_return
+        alpha = total_return - spy_return if total_return is not None and spy_return is not None else None
 
         return {
             'cash': round(self.cash, 2),
-            'positions_value': round(positions_value, 2),
-            'total_value': round(total_value, 2),
+            'positions_value': round(positions_value, 2) if positions_value is not None else None,
+            'total_value': round(total_value, 2) if total_value is not None else None,
             'initial_capital': self.INITIAL_CAPITAL,
-            'total_return': round(total_return, 2),
-            'total_return_dollars': round(total_value - self.INITIAL_CAPITAL, 2),
-            'spy_return': round(spy_return, 2),
-            'alpha': round(alpha, 2),
-            'spy_start_price': round(self.spy_start_price, 2) if self.spy_start_price else None,
-            'spy_current_price': round(current_spy_price, 2) if current_spy_price else None,
+            'total_return': round(total_return, 2) if total_return is not None else None,
+            'total_return_dollars': round(total_value - self.INITIAL_CAPITAL, 2) if total_value is not None else None,
+            'spy_return': float(round(spy_return, 2)) if spy_return is not None else None,
+            'alpha': float(round(alpha, 2)) if alpha is not None else None,
+            'spy_start_price': float(round(self.spy_start_price, 2)) if self.spy_start_price else None,
+            'spy_current_price': float(round(current_spy_price, 2)) if current_spy_price else None,
             'positions': position_details,
+            'data_status': 'live' if total_value is not None else 'unavailable',
+            'benchmark_status': 'live' if spy_return is not None else 'unavailable',
             'num_positions': len(self.positions),
             'num_trades': len(self.trade_log),
             'timestamp': datetime.now().isoformat()
@@ -744,11 +1076,15 @@ def make_trading_decisions():
                     )
                     executed_trades.append(trade)
 
-        except Exception as e:
-            continue
+        except Exception as exc:
+            logger.warning('Trading decision failed for %s: %s', ticker, exc)
 
     # 2. Screen for new opportunities
     total_value, _, _ = trading_sim.get_portfolio_value()
+    if total_value is None:
+        logger.warning('Skipping trading cycle because an open position lacks a current price')
+        trading_sim.record_portfolio_snapshot()
+        return executed_trades
 
     # Screen for strong buys
     try:
@@ -792,8 +1128,8 @@ def make_trading_decisions():
             trade = trading_sim.execute_trade('buy', ticker, quantity, current_price, reason)
             executed_trades.append(trade)
 
-    except Exception as e:
-        pass
+    except Exception as exc:
+        logger.warning('Strong-buy trading screen failed: %s', exc)
 
     # Screen for short candidates
     try:
@@ -837,8 +1173,8 @@ def make_trading_decisions():
             trade = trading_sim.execute_trade('short', ticker, quantity, current_price, reason, side='short')
             executed_trades.append(trade)
 
-    except Exception as e:
-        pass
+    except Exception as exc:
+        logger.warning('Short-candidate trading screen failed: %s', exc)
 
     # Record portfolio snapshot after trading
     trading_sim.record_portfolio_snapshot()
@@ -868,8 +1204,8 @@ class NewsAnalyzer:
                         'type': item.get('type', 'STORY'),
                         'thumbnail': item.get('thumbnail', {}).get('resolutions', [{}])[0].get('url', '') if item.get('thumbnail') else ''
                     })
-        except Exception as e:
-            pass
+        except Exception as exc:
+            logger.warning('News parsing failed for %s: %s', ticker, exc)
         return news_items
 
     @staticmethod
@@ -984,7 +1320,7 @@ class NewsAnalyzer:
                         if publish_time:
                             try:
                                 published_str = datetime.fromtimestamp(publish_time).strftime('%Y-%m-%d %H:%M')
-                            except:
+                            except (TypeError, ValueError, OSError):
                                 published_str = 'Recent'
                         else:
                             published_str = 'Recent'
@@ -1364,14 +1700,14 @@ def get_vix():
         vix_data = get_cached_history("^VIX", period="5d")
         if not vix_data.empty:
             return vix_data['Close'].iloc[-1]
-    except:
-        pass
-    return 20
+    except Exception as exc:
+        logger.warning('Unable to load VIX: %s', exc)
+    return None
 
 
 def get_market_sentiment():
     """Get broader market sentiment indicators (cached)"""
-    sentiment = {}
+    sentiment = {'data_status': 'unavailable'}
 
     try:
         vix_data = get_cached_history("^VIX", period="1mo")
@@ -1391,17 +1727,15 @@ def get_market_sentiment():
                 sentiment['vix_signal'] = 'HIGH FEAR - Significant market stress'
             else:
                 sentiment['vix_signal'] = 'EXTREME FEAR - Panic selling, potential buying opportunity'
-    except:
-        sentiment['vix'] = 20
-        sentiment['vix_change'] = 0
-        sentiment['vix_signal'] = 'NORMAL'
+    except Exception as exc:
+        logger.warning('Unable to load VIX sentiment: %s', exc)
 
     try:
         tny_data = get_cached_history("^TNX", period="5d")
         if not tny_data.empty:
             sentiment['treasury_10y'] = round(tny_data['Close'].iloc[-1], 2)
-    except:
-        sentiment['treasury_10y'] = 4.0
+    except Exception as exc:
+        logger.warning('Unable to load Treasury yield: %s', exc)
 
     try:
         spy_data = get_cached_history("SPY", period="1mo")
@@ -1410,13 +1744,15 @@ def get_market_sentiment():
                 (spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[0] - 1) * 100, 2
             )
             sentiment['sp500_current'] = round(spy_data['Close'].iloc[-1], 2)
-    except:
-        sentiment['sp500_monthly_change'] = 0
+    except Exception as exc:
+        logger.warning('Unable to load S&P 500 trend: %s', exc)
 
     # Fear & Greed approximation based on VIX and market momentum
     try:
-        vix_score = 100 - min(sentiment.get('vix', 20) * 2.5, 100)
-        momentum_score = 50 + sentiment.get('sp500_monthly_change', 0) * 5
+        if sentiment.get('vix') is None or sentiment.get('sp500_monthly_change') is None:
+            raise ValueError('VIX and S&P 500 data are required')
+        vix_score = 100 - min(sentiment['vix'] * 2.5, 100)
+        momentum_score = 50 + sentiment['sp500_monthly_change'] * 5
         fear_greed = (vix_score * 0.6 + momentum_score * 0.4)
         sentiment['fear_greed_index'] = round(max(0, min(100, fear_greed)), 0)
 
@@ -1430,9 +1766,16 @@ def get_market_sentiment():
             sentiment['fear_greed_signal'] = 'GREED'
         else:
             sentiment['fear_greed_signal'] = 'EXTREME GREED'
-    except:
-        sentiment['fear_greed_index'] = 50
-        sentiment['fear_greed_signal'] = 'NEUTRAL'
+    except Exception as exc:
+        logger.warning('Unable to calculate fear and greed: %s', exc)
+
+    required_fields = ('vix', 'treasury_10y', 'sp500_monthly_change')
+    available_fields = [sentiment.get(field) is not None for field in required_fields]
+    sentiment['data_status'] = (
+        'live' if all(available_fields)
+        else 'partial' if any(available_fields)
+        else 'unavailable'
+    )
 
     return sentiment
 
@@ -1444,15 +1787,24 @@ def get_consumer_sentiment():
     consumer_data = {
         'consumer_confidence': None,
         'retail_sentiment': None,
-        'unemployment_trend': None
+        'unemployment_trend': None,
+        'consumer_signal': 'UNAVAILABLE',
+        'data_status': 'unavailable',
     }
 
     try:
         # Use XLY (Consumer Discretionary) as proxy for consumer confidence
         xly_data = get_cached_history("XLY", period="1mo")
         if not xly_data.empty:
-            change = (xly_data['Close'].iloc[-1] / xly_data['Close'].iloc[0] - 1) * 100
+            first_close = _finite_number(xly_data['Close'].iloc[0])
+            last_close = _finite_number(xly_data['Close'].iloc[-1])
+            if first_close is None or last_close is None or first_close <= 0:
+                raise ValueError('Consumer proxy returned invalid prices')
+            change = (last_close / first_close - 1) * 100
+            if not math.isfinite(change):
+                raise ValueError('Consumer proxy returned a non-finite change')
             consumer_data['retail_sentiment'] = round(change, 2)
+            consumer_data['data_status'] = 'live'
 
             if change > 5:
                 consumer_data['consumer_signal'] = 'STRONG - Consumer spending robust'
@@ -1462,8 +1814,8 @@ def get_consumer_sentiment():
                 consumer_data['consumer_signal'] = 'WEAK - Consumer caution'
             else:
                 consumer_data['consumer_signal'] = 'NEGATIVE - Consumer pullback'
-    except:
-        consumer_data['consumer_signal'] = 'NEUTRAL'
+    except Exception as exc:
+        logger.warning('Unable to derive consumer sentiment: %s', exc)
 
     return consumer_data
 
@@ -1482,8 +1834,8 @@ def get_daily_movers():
                     'price': round(curr_close, 2),
                     'change_pct': round(pct_change, 2)
                 }
-        except:
-            pass
+        except Exception as exc:
+            logger.debug('Unable to read daily mover for %s: %s', ticker, exc)
         return None
 
     with ThreadPoolExecutor(max_workers=5) as executor:  # Reduced from 10 to avoid rate limits
@@ -1507,9 +1859,9 @@ def get_market_indexes():
 
     # Index symbol mapping with fallback data
     indexes = [
-        {'symbol': '^SPX', 'name': 'S&P 500', 'url': 'https://finance.yahoo.com/quote/%5EGSPC'},
+        {'symbol': '^GSPC', 'name': 'S&P 500', 'url': 'https://finance.yahoo.com/quote/%5EGSPC'},
         {'symbol': '^DJI', 'name': 'DOW', 'url': 'https://finance.yahoo.com/quote/%5EDJI'},
-        {'symbol': '^NDQ', 'name': 'NASDAQ', 'url': 'https://finance.yahoo.com/quote/%5EIXIC'},
+        {'symbol': '^IXIC', 'name': 'NASDAQ', 'url': 'https://finance.yahoo.com/quote/%5EIXIC'},
         {'symbol': 'SPY', 'name': 'SPY', 'url': 'https://finance.yahoo.com/quote/SPY'},
         {'symbol': 'QQQ', 'name': 'QQQ', 'url': 'https://finance.yahoo.com/quote/QQQ'},
         {'symbol': 'VOO', 'name': 'VOO', 'url': 'https://finance.yahoo.com/quote/VOO'}
@@ -1525,8 +1877,11 @@ def get_market_indexes():
                     'name': idx['name'],
                     'url': idx['url'],
                     'price': quote['price'],
-                    'change': quote.get('change', 0),
-                    'change_pct': quote.get('change_pct', 0)
+                    'change': quote.get('change'),
+                    'change_pct': quote.get('change_pct'),
+                    'source': quote.get('source', 'unknown'),
+                    'stale': bool(quote.get('stale', False)),
+                    'as_of': quote.get('as_of'),
                 })
             else:
                 results.append({
@@ -1535,16 +1890,23 @@ def get_market_indexes():
                     'url': idx['url'],
                     'price': None,
                     'change': None,
-                    'change_pct': 0
+                    'change_pct': None,
+                    'source': 'unavailable',
+                    'stale': False,
+                    'as_of': None,
                 })
-        except Exception as e:
+        except Exception as exc:
+            logger.warning('Unable to load market index %s: %s', idx['symbol'], exc)
             results.append({
                 'symbol': idx['symbol'],
                 'name': idx['name'],
                 'url': idx['url'],
                 'price': None,
                 'change': None,
-                'change_pct': 0
+                'change_pct': None,
+                'source': 'unavailable',
+                'stale': False,
+                'as_of': None,
             })
 
     _ticker_cache.set(cache_key, results, ttl=300)  # 5 min cache
@@ -1603,7 +1965,7 @@ def get_earnings_calendar():
                             earnings_dt = datetime.strptime(ed[:10], '%Y-%m-%d')
                         elif isinstance(ed, datetime):
                             earnings_dt = ed
-            except:
+            except (TypeError, ValueError, OverflowError):
                 pass
 
             # Method 2: Check info for earnings timestamps (fallback, uses cached info)
@@ -1615,7 +1977,7 @@ def get_earnings_calendar():
                     elif info.get('earningsTimestampStart'):
                         ts = info['earningsTimestampStart']
                         earnings_dt = datetime.fromtimestamp(ts)
-                except:
+                except (TypeError, ValueError, OverflowError):
                     pass
 
             if earnings_dt is None:
@@ -1629,25 +1991,6 @@ def get_earnings_calendar():
             days_until = (earnings_dt.date() - today_date).days
             if days_until < 0 or days_until > 90:
                 return None
-
-            # Simplified prediction (no additional API calls)
-            prediction = 'NEUTRAL'
-
-            # Get current score using cached history
-            score = 50
-            try:
-                hist = get_cached_history(ticker, period="3mo")
-                if hist is not None and not hist.empty:
-                    rsi = TechnicalAnalyzer.calculate_rsi(hist['Close'])
-                    rsi_val = rsi.iloc[-1] if len(rsi) > 0 and not pd.isna(rsi.iloc[-1]) else 50
-                    if rsi_val < 30:
-                        score = 70
-                    elif rsi_val > 70:
-                        score = 30
-                    else:
-                        score = int(50 + (50 - rsi_val))
-            except:
-                pass
 
             # Get market cap for display
             market_cap = info.get('marketCap', 0)
@@ -1667,21 +2010,19 @@ def get_earnings_calendar():
                 'company_name': company_name,
                 'sector': sector,
                 'industry': industry,
-                'current_price': round(current_price, 2) if current_price else 0,
+                'current_price': round(current_price, 2) if current_price else None,
                 'market_cap': market_cap_display,
                 'earnings_date': earnings_dt.strftime('%Y-%m-%d'),
                 'earnings_time': earnings_time,
                 'days_until': days_until,
-                'prev_surprise_pct': 0,
-                'prev_eps_actual': None,
-                'prev_eps_estimate': None,
-                'last_earnings_date': None,
-                'earnings_history': [],
-                'prediction': prediction,
-                'score': score
+                'signal': 'SCHEDULED EVENT',
+                'signal_basis': 'provider_calendar',
+                'data_status': 'live',
+                'data_source': 'yahoo_finance',
+                'as_of': datetime.now().isoformat(timespec='seconds'),
             }
-        except:
-            pass
+        except Exception as exc:
+            logger.debug('Unable to screen %s: %s', ticker, exc)
         return None
 
     # Use fewer workers to reduce rate limiting
@@ -1699,242 +2040,21 @@ def get_earnings_calendar():
     return results
 
 
-def get_penny_stocks():
-    """Analyze penny stocks (stocks under $5) - uses cached data and simplified scoring"""
-    cache_key = "penny_stocks"
-    cached = _ticker_cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    results = []
-
-    def analyze_penny(ticker):
-        try:
-            # Use cached data to avoid rate limiting
-            info = get_cached_info(ticker) or {}
-            hist = get_cached_history(ticker, period="3mo")
-
-            if hist is None or hist.empty:
-                return None
-
-            current_price = hist['Close'].iloc[-1]
-
-            # STRICT filter: only stocks under $5
-            if current_price >= 5:
-                return None
-
-            company_name = info.get('longName', info.get('shortName', ticker))
-            sector = info.get('sector', 'N/A')
-
-            # Calculate RSI
-            rsi = TechnicalAnalyzer.calculate_rsi(hist['Close'])
-            rsi_val = round(rsi.iloc[-1], 2) if len(rsi) > 0 and not pd.isna(rsi.iloc[-1]) else 50
-
-            # Calculate volatility (standard deviation as percentage)
-            returns = hist['Close'].pct_change().dropna()
-            volatility = round(returns.std() * 100, 2) if len(returns) > 0 else 0
-
-            # Get volume
-            avg_volume = info.get('averageVolume', hist['Volume'].mean() if 'Volume' in hist.columns else 0)
-
-            # Calculate simple score based on technicals (no external API calls)
-            score = 50
-
-            # RSI scoring
-            if rsi_val < 30:
-                score += 20  # Oversold = bullish
-            elif rsi_val > 70:
-                score -= 20  # Overbought = bearish
-            elif rsi_val < 40:
-                score += 10
-            elif rsi_val > 60:
-                score -= 10
-
-            # Price momentum (compare to 20-day SMA)
-            if len(hist) >= 20:
-                sma20 = hist['Close'].rolling(20).mean().iloc[-1]
-                if current_price > sma20:
-                    score += 10  # Above SMA = bullish
-                else:
-                    score -= 10  # Below SMA = bearish
-
-            # Volume trend
-            if len(hist) >= 10:
-                recent_vol = hist['Volume'].tail(5).mean()
-                older_vol = hist['Volume'].tail(20).head(10).mean()
-                if older_vol > 0 and recent_vol > older_vol * 1.5:
-                    score += 5  # Increasing volume = interest
-
-            # Volatility adjustment (high volatility = risky)
-            if volatility > 10:
-                score -= 5
-
-            # Clamp score
-            score = max(10, min(90, score))
-
-            # Determine recommendation based on score
-            if score >= 70:
-                recommendation = 'STRONG BUY'
-                category = 'buy'
-            elif score >= 55:
-                recommendation = 'BUY'
-                category = 'buy'
-            elif score >= 45:
-                recommendation = 'HOLD'
-                category = 'hold'
-            elif score >= 35:
-                recommendation = 'SELL'
-                category = 'sell'
-            else:
-                recommendation = 'SHORT'
-                category = 'short'
-
-            return {
-                'ticker': ticker,
-                'company_name': company_name,
-                'sector': sector,
-                'price': round(current_price, 4),
-                'score': score,
-                'recommendation': recommendation,
-                'category': category,
-                'rsi': rsi_val,
-                'volatility': volatility,
-                'volume': int(avg_volume) if avg_volume else 0
-            }
-        except:
-            pass
-        return None
-
-    # Use fewer workers to avoid rate limiting
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = {executor.submit(analyze_penny, ticker): ticker for ticker in PENNY_STOCK_UNIVERSE}
-        for future in as_completed(futures):
-            result = future.result()
-            if result:
-                results.append(result)
-
-    # Organize by category, then by score
-    buy_stocks = sorted([r for r in results if r['category'] == 'buy'], key=lambda x: x['score'], reverse=True)
-    hold_stocks = sorted([r for r in results if r['category'] == 'hold'], key=lambda x: x['score'], reverse=True)
-    sell_stocks = sorted([r for r in results if r['category'] == 'sell'], key=lambda x: x['score'], reverse=True)
-    short_stocks = sorted([r for r in results if r['category'] == 'short'], key=lambda x: x['score'], reverse=True)
-
-    organized_results = {
-        'buy': buy_stocks,
-        'hold': hold_stocks,
-        'sell': sell_stocks,
-        'short': short_stocks,
-        'all': results
-    }
-
-    _ticker_cache.set(cache_key, organized_results, ttl=1800)  # 30 min cache
-    return organized_results
-
-
-def ensure_penny_section_minimums(stocks, min_per_category=3):
-    """Ensure each penny stock category has a minimum number of stocks."""
-    categories = {'buy': [], 'hold': [], 'sell': [], 'short': []}
-    if not stocks:
-        return categories
-
-    def category_sort_key(category, stock):
-        score = stock.get('score', 50)
-        if category == 'buy':
-            return -score
-        if category == 'short':
-            return score
-        if category == 'hold':
-            return abs(score - 50)
-        return abs(score - 40)
-
-    for stock in stocks:
-        score = stock.get('score', 50)
-        if score >= 55:
-            categories['buy'].append(stock)
-        elif score >= 45:
-            categories['hold'].append(stock)
-        elif score >= 35:
-            categories['sell'].append(stock)
-        else:
-            categories['short'].append(stock)
-
-    for target in categories:
-        while len(categories[target]) < min_per_category:
-            donors = [cat for cat in categories if cat != target and len(categories[cat]) > min_per_category]
-            if not donors:
-                break
-            candidates = []
-            for donor in donors:
-                candidates.extend(categories[donor])
-            candidate = min(candidates, key=lambda stock: category_sort_key(target, stock))
-            for donor in donors:
-                if candidate in categories[donor]:
-                    categories[donor].remove(candidate)
-                    break
-            categories[target].append(candidate)
-
-    all_stocks = list(stocks)
-    for target in categories:
-        if len(categories[target]) < min_per_category and all_stocks:
-            candidates = sorted(all_stocks, key=lambda stock: category_sort_key(target, stock))
-            idx = 0
-            while len(categories[target]) < min_per_category:
-                categories[target].append(candidates[idx % len(candidates)].copy())
-                idx += 1
-
-    return categories
-
-
 def get_earnings_data(ticker):
-    """Get earnings and fundamental data (cached) - with fallback data"""
+    """Get earnings data from Yahoo without manufacturing missing history."""
     # Check cache first
     cache_key = f"earnings_{ticker}"
     cached = _ticker_cache.get(cache_key)
     if cached is not None:
         return cached
 
-    today = datetime.now()
-
-    # Generate realistic earnings dates (quarters)
-    month = today.month
-    if month <= 3:
-        next_earnings_month = 4
-    elif month <= 6:
-        next_earnings_month = 7
-    elif month <= 9:
-        next_earnings_month = 10
-    else:
-        next_earnings_month = 1
-
-    next_year = today.year if next_earnings_month > month else today.year + 1
-    next_earnings = datetime(next_year, next_earnings_month, 15 + (hash(ticker) % 15))
-
-    # Generate mock earnings history based on ticker hash for consistency
-    ticker_hash = hash(ticker)
-    mock_earnings = []
-    for i in range(2):
-        q_month = ((today.month - 1 - (i * 3)) % 12) + 1
-        q_year = today.year if q_month <= today.month else today.year - 1
-        base_eps = 1.0 + (ticker_hash % 50) / 10  # 1.0 to 6.0
-        estimate = round(base_eps + (i * 0.1), 2)
-        actual = round(estimate * (1 + (((ticker_hash + i) % 20) - 10) / 100), 2)  # -10% to +10%
-        surprise = round(((actual - estimate) / estimate) * 100, 1) if estimate else 0
-
-        mock_earnings.append({
-            'date': f'{q_year}-{q_month:02d}-15',
-            'actual': actual,
-            'estimate': estimate,
-            'surprise': surprise
-        })
-
-    avg_surprise = round(sum(e['surprise'] for e in mock_earnings) / len(mock_earnings), 1) if mock_earnings else 0
-
     earnings_data = {
-        'earnings_date': next_earnings.strftime('%Y-%m-%d'),
-        'earnings_history': mock_earnings,
-        'earnings_surprise_avg': avg_surprise,
+        'earnings_date': None,
+        'earnings_history': [],
+        'earnings_surprise_avg': None,
         'recommendation_trend': {},
-        'analyst_price_targets': {}
+        'analyst_price_targets': {},
+        'data_status': 'unavailable',
     }
 
     # Try to get real data from Yahoo Finance
@@ -1946,8 +2066,9 @@ def get_earnings_data(ticker):
             if calendar is not None and not calendar.empty:
                 if 'Earnings Date' in calendar.index:
                     earnings_data['earnings_date'] = str(calendar.loc['Earnings Date'].iloc[0])
-        except:
-            pass
+                    earnings_data['data_status'] = 'live'
+        except Exception as exc:
+            logger.debug('Unable to read earnings calendar for %s: %s', ticker, exc)
 
         try:
             earnings_hist = stock.earnings_history
@@ -1957,33 +2078,39 @@ def get_earnings_data(ticker):
                 for _, row in recent_earnings.iterrows():
                     real_history.append({
                         'date': str(row.name) if hasattr(row, 'name') else 'N/A',
-                        'actual': row.get('epsActual', 0) or 0,
-                        'estimate': row.get('epsEstimate', 0) or 0,
-                        'surprise': row.get('surprisePercent', 0) or 0
+                        'actual': _finite_number(row.get('epsActual')),
+                        'estimate': _finite_number(row.get('epsEstimate')),
+                        'surprise': _as_percentage(row.get('surprisePercent'))
                     })
 
                 if real_history:
                     earnings_data['earnings_history'] = real_history[-2:]  # Last 2 quarters
-                    surprises = [e.get('surprise', 0) for e in real_history if e.get('surprise')]
+                    surprises = [
+                        e['surprise'] for e in real_history
+                        if e.get('surprise') is not None
+                    ]
                     if surprises:
                         earnings_data['earnings_surprise_avg'] = round(np.mean(surprises), 2)
-        except:
-            pass
+                    earnings_data['data_status'] = 'live'
+        except Exception as exc:
+            logger.debug('Unable to read earnings history for %s: %s', ticker, exc)
 
         try:
             info = get_cached_info(ticker)
             earnings_data['analyst_price_targets'] = {
-                'target_high': info.get('targetHighPrice', 0) or 0,
-                'target_low': info.get('targetLowPrice', 0) or 0,
-                'target_mean': info.get('targetMeanPrice', 0) or 0,
-                'target_median': info.get('targetMedianPrice', 0) or 0,
-                'num_analysts': info.get('numberOfAnalystOpinions', 0) or 0
+                'target_high': _finite_positive_number(info.get('targetHighPrice')),
+                'target_low': _finite_positive_number(info.get('targetLowPrice')),
+                'target_mean': _finite_positive_number(info.get('targetMeanPrice')),
+                'target_median': _finite_positive_number(info.get('targetMedianPrice')),
+                'num_analysts': _finite_positive_number(info.get('numberOfAnalystOpinions')),
             }
-        except:
-            pass
+            if any(value is not None for value in earnings_data['analyst_price_targets'].values()):
+                earnings_data['data_status'] = 'live'
+        except Exception as exc:
+            logger.debug('Unable to read analyst targets for %s: %s', ticker, exc)
 
-    except Exception as e:
-        pass
+    except Exception as exc:
+        logger.warning('Unable to load earnings data for %s: %s', ticker, exc)
 
     # Cache the result
     _ticker_cache.set(cache_key, earnings_data, ttl=3600)  # 1 hour cache for earnings
@@ -2502,10 +2629,10 @@ def generate_summary(data):
         summary += f"The RSI at {rsi:.0f} shows the stock is overbought. "
 
     # VIX impact
-    vix = data['market_sentiment'].get('vix', 20)
-    if vix > 25:
+    vix = data['market_sentiment'].get('vix')
+    if vix is not None and vix > 25:
         summary += f"Market volatility is elevated with VIX at {vix:.0f}, suggesting caution. "
-    elif vix < 15:
+    elif vix is not None and vix < 15:
         summary += f"Market volatility is low with VIX at {vix:.0f}, indicating calm markets. "
 
     # News sentiment
@@ -2578,8 +2705,12 @@ def calculate_investment_score(ticker_symbol):
                 'category': 'fundamental'
             })
 
-        # Add VIX evidence
-        if vix < 15:
+        # Add VIX evidence. Missing provider data is neutral for the score and
+        # remains visibly unavailable in the returned indicators.
+        vix_for_score = vix if vix is not None else 20
+        if vix is None:
+            tech_scores['vix'] = 50
+        elif vix < 15:
             tech_scores['vix'] = 70
             all_evidence.append({
                 'factor': 'VIX (Volatility Index)',
@@ -2589,11 +2720,11 @@ def calculate_investment_score(ticker_symbol):
                 'weight': '+20 points',
                 'category': 'sentiment'
             })
-        elif vix < 20:
+        elif vix_for_score < 20:
             tech_scores['vix'] = 60
-        elif vix < 25:
+        elif vix_for_score < 25:
             tech_scores['vix'] = 50
-        elif vix < 30:
+        elif vix_for_score < 30:
             tech_scores['vix'] = 40
             all_evidence.append({
                 'factor': 'VIX (Volatility Index)',
@@ -2614,7 +2745,7 @@ def calculate_investment_score(ticker_symbol):
                 'category': 'sentiment'
             })
 
-        indicators['VIX'] = round(vix, 2)
+        indicators['VIX'] = round(vix, 2) if vix is not None else None
 
         # Consumer sentiment impact
         consumer_change = consumer_sentiment.get('retail_sentiment', 0)
@@ -2679,26 +2810,28 @@ def calculate_investment_score(ticker_symbol):
                 'category': 'news'
             })
 
-        # Earnings surprise impact
-        if earnings['earnings_surprise_avg'] > 5:
+        # Earnings surprise impact. Missing earnings history is neutral, not a
+        # synthetic zero/positive result.
+        earnings_surprise_avg = earnings.get('earnings_surprise_avg')
+        if earnings_surprise_avg is not None and earnings_surprise_avg > 5:
             tech_scores['earnings'] = 70
             all_evidence.append({
                 'factor': 'Earnings Surprises',
-                'value': f'+{earnings["earnings_surprise_avg"]:.1f}%',
+                'value': f'+{earnings_surprise_avg:.1f}%',
                 'impact': 'BULLISH',
-                'detail': f'Company beats earnings estimates by average of {earnings["earnings_surprise_avg"]:.1f}% over last 4 quarters.',
+                'detail': f'Company beats earnings estimates by average of {earnings_surprise_avg:.1f}% over last 4 quarters.',
                 'weight': '+20 points',
                 'category': 'fundamental'
             })
-        elif earnings['earnings_surprise_avg'] > 0:
+        elif earnings_surprise_avg is not None and earnings_surprise_avg > 0:
             tech_scores['earnings'] = 60
-        elif earnings['earnings_surprise_avg'] < -5:
+        elif earnings_surprise_avg is not None and earnings_surprise_avg < -5:
             tech_scores['earnings'] = 30
             all_evidence.append({
                 'factor': 'Earnings Surprises',
-                'value': f'{earnings["earnings_surprise_avg"]:.1f}%',
+                'value': f'{earnings_surprise_avg:.1f}%',
                 'impact': 'BEARISH',
-                'detail': f'Company misses earnings estimates by average of {abs(earnings["earnings_surprise_avg"]):.1f}% over last 4 quarters.',
+                'detail': f'Company misses earnings estimates by average of {abs(earnings_surprise_avg):.1f}% over last 4 quarters.',
                 'weight': '-20 points',
                 'category': 'fundamental'
             })
@@ -2837,8 +2970,15 @@ def calculate_investment_score(ticker_symbol):
         price_targets = calculate_price_targets(current_price, atr, rsi, final_score, {})
 
         # Company info
-        company_name = info.get('longName', info.get('shortName', ticker_symbol))
-        industry = info.get('industry', 'N/A')
+        company_name = info.get('longName') or info.get('shortName') or ticker_symbol
+        industry = info.get('industry') or 'N/A'
+        market_cap = _finite_positive_number(info.get('marketCap'))
+        high_52_week = _finite_positive_number(info.get('fiftyTwoWeekHigh'))
+        low_52_week = _finite_positive_number(info.get('fiftyTwoWeekLow'))
+        if high_52_week is None:
+            high_52_week = _finite_positive_number(hist['High'].max())
+        if low_52_week is None:
+            low_52_week = _finite_positive_number(hist['Low'].min())
 
         result = {
             'ticker': ticker_symbol.upper(),
@@ -2852,6 +2992,12 @@ def calculate_investment_score(ticker_symbol):
             'recommendation': recommendation,
             'action': action,
             'confidence': confidence,
+            'data_status': 'live' if info and all(
+                component.get('data_status') == 'live'
+                for component in (market_sentiment, consumer_sentiment, earnings)
+            ) else 'partial',
+            'data_source': hist.attrs.get('data_source', 'provider'),
+            'data_as_of': hist.index[-1].isoformat() if len(hist.index) else None,
             'price_targets': price_targets,
             'indicators': indicators,
             'individual_scores': {k: round(v, 1) for k, v in tech_scores.items()},
@@ -2876,20 +3022,20 @@ def calculate_investment_score(ticker_symbol):
                 } for idx, row in hist.tail(60).iterrows()]
             },
             'fundamentals': {
-                'market_cap': info.get('marketCap', 0),
-                'pe_ratio': info.get('trailingPE'),
-                'forward_pe': info.get('forwardPE'),
-                'peg_ratio': info.get('pegRatio'),
-                'price_to_book': info.get('priceToBook'),
-                'dividend_yield': round(info.get('dividendYield', 0) * 100, 2) if info.get('dividendYield') else 0,
-                'profit_margin': round(info.get('profitMargins', 0) * 100, 2) if info.get('profitMargins') else 0,
-                'revenue_growth': round(info.get('revenueGrowth', 0) * 100, 2) if info.get('revenueGrowth') else 0,
-                'debt_to_equity': info.get('debtToEquity'),
-                'return_on_equity': round(info.get('returnOnEquity', 0) * 100, 2) if info.get('returnOnEquity') else 0,
-                '52_week_high': info.get('fiftyTwoWeekHigh', hist['High'].max()),
-                '52_week_low': info.get('fiftyTwoWeekLow', hist['Low'].min()),
-                'avg_volume': info.get('averageVolume', 0),
-                'beta': info.get('beta'),
+                'market_cap': market_cap,
+                'pe_ratio': _finite_number(info.get('trailingPE')),
+                'forward_pe': _finite_number(info.get('forwardPE')),
+                'peg_ratio': _finite_number(info.get('pegRatio')),
+                'price_to_book': _finite_number(info.get('priceToBook')),
+                'dividend_yield': _as_dividend_percentage(info),
+                'profit_margin': _as_percentage(info.get('profitMargins')),
+                'revenue_growth': _as_percentage(info.get('revenueGrowth')),
+                'debt_to_equity': _finite_number(info.get('debtToEquity')),
+                'return_on_equity': _as_percentage(info.get('returnOnEquity')),
+                '52_week_high': high_52_week,
+                '52_week_low': low_52_week,
+                'avg_volume': _finite_positive_number(info.get('averageVolume')),
+                'beta': _finite_number(info.get('beta')),
             }
         }
 
@@ -2898,8 +3044,9 @@ def calculate_investment_score(ticker_symbol):
 
         return result
 
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception as exc:
+        logger.exception('investment analysis failed for %s', ticker_symbol)
+        return {"error": "Unable to complete analysis for this ticker", "code": "analysis_failed"}
 
 
 def screen_stocks(filter_type='all', limit=20):
@@ -2914,7 +3061,7 @@ def screen_stocks(filter_type='all', limit=20):
                 info = get_cached_info(ticker)
 
                 # Get business description (truncate to ~300 chars for display)
-                description = info.get('longBusinessSummary', '')
+                description = info.get('longBusinessSummary') or ''
                 if len(description) > 300:
                     # Truncate at last complete sentence within limit
                     description = description[:300]
@@ -2925,16 +3072,18 @@ def screen_stocks(filter_type='all', limit=20):
                         description = description[:297] + '...'
 
                 # Get company category/sub-industry
-                industry = info.get('industry', result.get('industry', 'N/A'))
-                sector = info.get('sector', result.get('sector', 'N/A'))
+                industry = info.get('industry') or result.get('industry') or 'N/A'
+                sector = info.get('sector') or result.get('sector') or 'N/A'
 
                 # Get key metrics for investors
-                market_cap = info.get('marketCap', 0)
-                employees = info.get('fullTimeEmployees', 0)
-                country = info.get('country', 'USA')
+                market_cap = _finite_positive_number(info.get('marketCap'))
+                employees = _finite_positive_number(info.get('fullTimeEmployees'))
+                country = info.get('country') or None
 
                 # Determine company size category
-                if market_cap >= 200e9:
+                if market_cap is None:
+                    size_category = 'Unknown'
+                elif market_cap >= 200e9:
                     size_category = 'Mega Cap'
                 elif market_cap >= 10e9:
                     size_category = 'Large Cap'
@@ -2946,22 +3095,22 @@ def screen_stocks(filter_type='all', limit=20):
                     size_category = 'Micro Cap'
 
                 # Format market cap for display
-                if market_cap >= 1e12:
+                if market_cap is not None and market_cap >= 1e12:
                     market_cap_display = f"${market_cap/1e12:.2f}T"
-                elif market_cap >= 1e9:
+                elif market_cap is not None and market_cap >= 1e9:
                     market_cap_display = f"${market_cap/1e9:.1f}B"
-                elif market_cap >= 1e6:
+                elif market_cap is not None and market_cap >= 1e6:
                     market_cap_display = f"${market_cap/1e6:.0f}M"
                 else:
                     market_cap_display = "N/A"
 
                 # Format employees
-                if employees >= 1000:
-                    employees_display = f"{employees//1000}K+"
-                elif employees > 0:
-                    employees_display = str(employees)
-                else:
+                if employees is None:
                     employees_display = "N/A"
+                elif employees >= 1000:
+                    employees_display = f"{int(employees)//1000}K+"
+                else:
+                    employees_display = str(int(employees))
 
                 return {
                     'ticker': result['ticker'],
@@ -2978,11 +3127,11 @@ def screen_stocks(filter_type='all', limit=20):
                     'score': result['score'],
                     'recommendation': result['recommendation'],
                     'current_price': result['current_price'],
-                    'rsi': result['indicators'].get('RSI', 0),
+                    'rsi': _finite_number(result.get('indicators', {}).get('RSI')),
                     'confidence': result['confidence']
                 }
-        except:
-            pass
+        except Exception as exc:
+            logger.debug('Unable to screen ticker %s: %s', ticker, exc)
         return None
 
     with ThreadPoolExecutor(max_workers=5) as executor:  # Reduced from 10 to avoid rate limits
@@ -3019,11 +3168,17 @@ def screen_stocks(filter_type='all', limit=20):
 # API Routes
 @app.route('/')
 def index():
+    react_index = os.path.join(app.static_folder, 'index.html')
+    if SERVE_REACT_FRONTEND and os.path.isfile(react_index):
+        return send_from_directory(app.static_folder, 'index.html')
     return render_template('index.html')
 
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     """Serve static files from static directory"""
+    react_asset = os.path.join(app.static_folder, 'static', filename)
+    if SERVE_REACT_FRONTEND and os.path.isfile(react_asset):
+        return send_from_directory(os.path.join(app.static_folder, 'static'), filename)
     return send_from_directory('static', filename)
 
 @app.route('/manifest.json')
@@ -3038,22 +3193,34 @@ def service_worker():
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
-    data = request.json
-    ticker = data.get('ticker', '').strip()
-
-    if not ticker:
-        return jsonify({"error": "Please enter a ticker symbol"})
-
-    # Normalize ticker to handle index symbols (add ^ prefix if needed)
-    ticker = normalize_ticker(ticker)
+    data = _safe_json_body()
+    if data is None:
+        return _json_error('Request body must be a JSON object', 400, 'invalid_json')
+    try:
+        ticker = normalize_ticker(data.get('ticker', ''))
+    except ValueError as exc:
+        return _json_error(str(exc), 400, 'invalid_ticker')
 
     result = calculate_investment_score(ticker)
-    return jsonify(result)
+    if result.get('error'):
+        return jsonify(result), 404 if 'Insufficient data' in result['error'] else 502
+    return jsonify(result), 200
 
 @app.route('/api/screen', methods=['GET'])
 def screen():
-    filter_type = request.args.get('filter', 'all')
-    limit = int(request.args.get('limit', 20))
+    filter_type = request.args.get('filter', 'all').strip().lower()
+    if filter_type not in ALLOWED_SCREEN_FILTERS:
+        return _json_error(
+            f"Unknown filter. Choose one of: {', '.join(sorted(ALLOWED_SCREEN_FILTERS))}",
+            400,
+            'invalid_filter',
+        )
+    try:
+        limit = int(request.args.get('limit', 20))
+    except (TypeError, ValueError):
+        return _json_error('limit must be a whole number', 400, 'invalid_limit')
+    if not 1 <= limit <= MAX_SCREEN_LIMIT:
+        return _json_error(f'limit must be between 1 and {MAX_SCREEN_LIMIT}', 400, 'invalid_limit')
 
     results = screen_stocks(filter_type, limit)
     return jsonify({
@@ -3072,11 +3239,18 @@ def speak():
     if not ELEVENLABS_API_KEY:
         return jsonify({"error": "ElevenLabs API key not configured"}), 400
 
-    data = request.json
+    data = _safe_json_body()
+    if data is None:
+        return _json_error('Request body must be a JSON object', 400, 'invalid_json')
     text = data.get('text', '')
-
-    if not text:
-        return jsonify({"error": "No text provided"}), 400
+    if not isinstance(text, str) or not text.strip():
+        return _json_error('No text provided', 400, 'invalid_text')
+    if len(text) > MAX_SPEECH_LENGTH:
+        return _json_error(
+            f'Text must be {MAX_SPEECH_LENGTH} characters or fewer',
+            400,
+            'text_too_long',
+        )
 
     try:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
@@ -3094,7 +3268,12 @@ def speak():
             }
         }
 
-        response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
 
         if response.status_code == 200:
             return Response(
@@ -3103,41 +3282,63 @@ def speak():
                 headers={"Content-Disposition": "inline; filename=speech.mp3"}
             )
         else:
-            return jsonify({"error": "Failed to generate speech"}), 500
+            logger.warning('ElevenLabs returned HTTP %s', response.status_code)
+            return _json_error('Speech provider could not generate audio', 502, 'provider_error')
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except requests.RequestException:
+        return _json_error('Speech provider timed out or is unavailable', 502, 'provider_error')
 
 def get_quick_stock_data(symbols):
-    """Get quick stock data with fallback support"""
-    results = []
-    for symbol in symbols:
+    """Get quote-only mover data.
+
+    This endpoint deliberately does not call a full investment analysis.  A
+    one-day move is useful for a watchlist, but is not evidence for a buy or
+    short recommendation.
+    """
+    def get_one(symbol):
         try:
             quote = get_quote_with_fallback(symbol)
-            if quote and quote.get('price'):
-                results.append({
+            price = _finite_positive_number(quote.get('price')) if quote else None
+            change_pct = _finite_number(quote.get('change_pct')) if quote else None
+            # Leaders/laggards require a comparable one-day move. Do not let
+            # a quote with a missing change value break snapshot ordering or
+            # appear as a fabricated zero move.
+            if price is not None and change_pct is not None:
+                return {
                     'ticker': symbol,
                     'company_name': symbol,
-                    'current_price': quote['price'],
-                    'change_pct': quote['change_pct'],
-                    'price': quote['price'],
-                    'score': 50 + int(quote['change_pct'] * 5)
-                })
-        except:
-            pass
-    return results
+                    'current_price': price,
+                    'change_pct': change_pct,
+                    'price': price,
+                    'signal': 'MOMENTUM WATCH',
+                    'signal_basis': 'one_day_change',
+                    'source': quote.get('source', 'unknown'),
+                    'stale': bool(quote.get('stale', False)),
+                    'as_of': quote.get('as_of'),
+                }
+        except Exception as exc:
+            logger.debug('Unable to load quick quote for %s: %s', symbol, exc)
+        return None
+
+    # Quotes are independent I/O operations; bounded concurrency keeps the
+    # snapshot responsive without opening an unbounded provider fan-out.
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(symbols)))) as executor:
+        results = list(executor.map(get_one, symbols))
+    return [result for result in results if result]
 
 
 def get_fast_market_sentiment():
-    """Get market sentiment using fallback system (Stooq + Yahoo + hardcoded)"""
-    sentiment = {}
+    """Get fast market sentiment without silently inventing missing values."""
+    sentiment = {'data_status': 'unavailable'}
 
     # Get VIX
+    stale_provider_data = False
     try:
         vix_quote = get_quote_with_fallback('^VIX')
         if vix_quote:
             sentiment['vix'] = vix_quote['price']
-            sentiment['vix_change'] = vix_quote.get('change_pct', 0)
+            sentiment['vix_change'] = vix_quote.get('change_pct')
+            stale_provider_data = stale_provider_data or bool(vix_quote.get('stale'))
             if sentiment['vix'] < 15:
                 sentiment['vix_signal'] = 'LOW FEAR'
             elif sentiment['vix'] < 20:
@@ -3148,28 +3349,23 @@ def get_fast_market_sentiment():
                 sentiment['vix_signal'] = 'HIGH FEAR'
             else:
                 sentiment['vix_signal'] = 'EXTREME FEAR'
-        else:
-            sentiment['vix'] = 18
-            sentiment['vix_change'] = 0
-            sentiment['vix_signal'] = 'NORMAL'
-    except:
-        sentiment['vix'] = 18
-        sentiment['vix_change'] = 0
-        sentiment['vix_signal'] = 'NORMAL'
+    except Exception as exc:
+        logger.warning('Unable to load fast VIX sentiment: %s', exc)
 
     # Get 10Y Treasury (TNX)
     try:
         tnx_quote = get_quote_with_fallback('^TNX')
         if tnx_quote:
             sentiment['treasury_10y'] = tnx_quote['price']
-        else:
-            sentiment['treasury_10y'] = 4.5
-    except:
-        sentiment['treasury_10y'] = 4.5
+            stale_provider_data = stale_provider_data or bool(tnx_quote.get('stale'))
+    except Exception as exc:
+        logger.warning('Unable to load fast Treasury yield: %s', exc)
 
     # Calculate Fear & Greed based on VIX
     try:
-        vix = sentiment.get('vix', 20)
+        vix = sentiment.get('vix')
+        if vix is None:
+            raise ValueError('VIX data unavailable')
         # VIX 10 = 100 (extreme greed), VIX 40 = 0 (extreme fear)
         fear_greed = max(0, min(100, 100 - ((vix - 10) * 3.33)))
         sentiment['fear_greed_index'] = round(fear_greed)
@@ -3184,9 +3380,18 @@ def get_fast_market_sentiment():
             sentiment['fear_greed_signal'] = 'GREED'
         else:
             sentiment['fear_greed_signal'] = 'EXTREME GREED'
-    except:
-        sentiment['fear_greed_index'] = 50
-        sentiment['fear_greed_signal'] = 'NEUTRAL'
+    except Exception as exc:
+        logger.warning('Unable to calculate fast fear and greed: %s', exc)
+
+    sentiment_fields = [sentiment.get('vix') is not None, sentiment.get('treasury_10y') is not None]
+    if not any(sentiment_fields):
+        sentiment['data_status'] = 'unavailable'
+    elif stale_provider_data:
+        sentiment['data_status'] = 'fallback'
+    elif all(sentiment_fields):
+        sentiment['data_status'] = 'live'
+    else:
+        sentiment['data_status'] = 'partial'
 
     return sentiment
 
@@ -3211,7 +3416,8 @@ def snapshot():
 
         try:
             all_stock_data = stocks_future.result(timeout=30)
-        except:
+        except Exception as exc:
+            logger.warning('Mover provider request failed: %s', exc)
             all_stock_data = []
 
         # Sort for gainers (highest change) and losers (lowest change)
@@ -3220,42 +3426,74 @@ def snapshot():
         gainers = sorted_by_change[:10]
         losers = sorted_by_change[-10:][::-1]  # Reverse to show worst first
 
-        # Strong buys = top gainers with high scores
-        strong_buys = []
+        # Keep the legacy keys for existing clients, but make their semantics
+        # explicit: these are leaders/laggards by daily move, not scored calls.
+        leaders = []
         for s in gainers[:10]:
-            strong_buys.append({
+            leaders.append({
                 'ticker': s['ticker'],
                 'company_name': s['ticker'],
                 'current_price': s['current_price'],
                 'change_pct': s['change_pct'],
-                'score': min(95, max(60, 70 + int(s.get('change_pct', 0) * 3)))
+                'signal': 'MOMENTUM WATCH',
+                'signal_basis': 'one_day_change',
+                'source': s.get('source', 'unknown'),
+                'stale': s.get('stale', False),
+                'as_of': s.get('as_of'),
             })
 
-        # Shorts = worst performers
-        shorts = []
+        laggards = []
         for s in losers[:10]:
-            shorts.append({
+            laggards.append({
                 'ticker': s['ticker'],
                 'company_name': s['ticker'],
                 'current_price': s['current_price'],
                 'change_pct': s['change_pct'],
-                'score': max(15, min(45, 35 + int(s.get('change_pct', 0) * 3)))
+                'signal': 'RISK WATCH',
+                'signal_basis': 'one_day_change',
+                'source': s.get('source', 'unknown'),
+                'stale': s.get('stale', False),
+                'as_of': s.get('as_of'),
             })
 
+        quote_data_status = _quote_data_status([*all_stock_data, *market_indexes])
+        sentiment_status = market_sentiment.get('data_status')
+        if quote_data_status == 'unavailable':
+            data_status = 'unavailable'
+        elif quote_data_status in {'fallback', 'partial'}:
+            data_status = quote_data_status
+        elif (
+            not all_stock_data
+            or not market_indexes
+            or sentiment_status in {'unavailable', 'partial', 'fallback'}
+        ):
+            data_status = 'partial' if sentiment_status != 'fallback' else 'fallback'
+        else:
+            data_status = 'live'
         return jsonify({
             'timestamp': datetime.now().isoformat(),
+            'data_status': data_status,
+            'data_mode': _quote_data_mode(
+                [*all_stock_data, *market_indexes], data_status
+            ),
             'market_sentiment': market_sentiment,
             'market_indexes': market_indexes,
-            'strong_buys': strong_buys,
-            'shorts': shorts,
+            'leaders': leaders,
+            'laggards': laggards,
+            'strong_buys': leaders,
+            'shorts': laggards,
             'gainers': gainers[:5],
             'losers': losers[:5],
             'market_news': []
         })
-    except Exception as e:
+    except Exception:
+        logger.exception('Snapshot request failed')
         return jsonify({
             'timestamp': datetime.now().isoformat(),
-            'error': str(e),
+            'data_status': 'error',
+            'data_mode': 'unavailable',
+            'error': 'Market data providers are unavailable',
+            'code': 'provider_error',
             'market_sentiment': {},
             'market_indexes': [],
             'strong_buys': [],
@@ -3263,14 +3501,18 @@ def snapshot():
             'gainers': [],
             'losers': [],
             'market_news': []
-        })
+        }), 503
 
 
 @app.route('/api/market-indexes', methods=['GET'])
 def market_indexes():
     """Get major market index performance"""
+    indexes = get_market_indexes()
+    data_status = _quote_data_status(indexes)
     return jsonify({
-        'indexes': get_market_indexes(),
+        'indexes': indexes,
+        'data_status': data_status,
+        'data_mode': _quote_data_mode(indexes, data_status),
         'timestamp': datetime.now().isoformat()
     })
 
@@ -3285,20 +3527,25 @@ def earnings_calendar():
         return jsonify({
             'earnings': earnings_data,
             'count': len(earnings_data),
+            'data_status': 'live' if earnings_data else 'unavailable',
+            'data_source': 'yahoo_finance' if earnings_data else 'unavailable',
             'timestamp': datetime.now().isoformat()
         })
-    except Exception as e:
+    except Exception:
+        logger.exception('Earnings calendar request failed')
         return jsonify({
             'earnings': [],
             'count': 0,
-            'error': str(e),
+            'data_status': 'unavailable',
+            'data_source': 'unavailable',
+            'error': 'Earnings data provider is unavailable',
             'timestamp': datetime.now().isoformat()
         })
 
 
 @app.route('/api/penny-stocks', methods=['GET'])
 def penny_stocks():
-    """Get penny stock analysis with fallback system"""
+    """Get quote-based penny-stock watchlists with explicit risk labeling."""
     # Company information with descriptions and industries
     PENNY_STOCK_INFO = {
         'F': {
@@ -3454,43 +3701,40 @@ def penny_stocks():
     }
 
     penny_tickers = list(dict.fromkeys(PENNY_STOCK_UNIVERSE + list(PENNY_STOCK_INFO.keys())))
-    stocks = []
 
-    for ticker in penny_tickers:
+    def build_penny_stock(ticker):
         info = PENNY_STOCK_INFO.get(ticker, {'name': ticker, 'sector': 'N/A', 'description': ''})
         try:
             quote = get_quote_with_fallback(ticker)
             if not quote or quote.get('price') is None:
-                continue
+                return None
 
             try:
                 price = float(quote['price'])
             except (TypeError, ValueError):
-                continue
+                return None
 
             if price >= 5:
-                continue
+                return None
 
-            change = quote.get('change_pct', 0) or 0
+            try:
+                change = float(quote.get('change_pct'))
+            except (TypeError, ValueError):
+                return None
+            if not math.isfinite(change):
+                return None
 
-            # Calculate score based on momentum - adjusted thresholds for better short candidates
-            if change > 3:
-                score = 75 + min(20, int(change * 2))
-            elif change > 0.5:
-                score = 55 + int(change * 5)
-            elif change > -1:
-                score = 40 + int(change * 5)
+            # This is a watchlist bucket derived only from the provider's
+            # one-day move. It is intentionally not presented as a score or
+            # recommendation based on fundamentals, RSI, or volatility.
+            if change >= 1.5:
+                category, signal = 'buy', 'POSITIVE MOMENTUM'
+            elif change >= -0.5:
+                category, signal = 'hold', 'MIXED MOMENTUM'
+            elif change >= -2:
+                category, signal = 'sell', 'WEAK MOMENTUM'
             else:
-                # More stocks fall into short category
-                score = max(10, 35 + int(change * 3))
-
-            # Generate pseudo-RSI based on change (simplified)
-            rsi = 50 + (change * 5)
-            rsi = max(10, min(90, rsi))
-
-            # Generate pseudo-volatility
-            volatility = abs(change) * 3 + 15
-            volatility = max(10, min(80, volatility))
+                category, signal = 'short', 'HIGH RISK WATCH'
 
             stock_data = {
                 'ticker': ticker,
@@ -3500,25 +3744,41 @@ def penny_stocks():
                 'price': price,
                 'current_price': price,
                 'change_pct': change,
-                'score': min(95, max(10, score)),
-                'rsi': round(rsi, 1),
-                'volatility': round(volatility, 1),
-                'recommendation': 'BUY' if score >= 60 else 'HOLD' if score >= 45 else 'SELL' if score >= 30 else 'SHORT'
+                'signal': signal,
+                'category': category,
+                'signal_basis': 'one_day_change',
+                'data_status': 'live' if not quote.get('stale') else 'fallback',
+                'data_source': quote.get('source', 'unknown'),
+                'stale': bool(quote.get('stale', False)),
+                'as_of': quote.get('as_of'),
             }
 
-            stocks.append(stock_data)
-        except Exception:
-            pass
+            return stock_data
+        except Exception as exc:
+            logger.debug('Unable to load penny quote for %s: %s', ticker, exc)
+        return None
 
-    results = ensure_penny_section_minimums(stocks, min_per_category=3)
+    # Quote requests are independent; bounded concurrency keeps this optional
+    # watchlist from serially blocking the dashboard on provider timeouts.
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(penny_tickers)))) as executor:
+        stocks = [
+            stock
+            for stock in executor.map(build_penny_stock, penny_tickers)
+            if stock is not None
+        ]
+
+    results = {
+        'buy': [s for s in stocks if s.get('category') == 'buy'],
+        'hold': [s for s in stocks if s.get('category') == 'hold'],
+        'sell': [s for s in stocks if s.get('category') == 'sell'],
+        'short': [s for s in stocks if s.get('category') == 'short'],
+    }
 
     # Sort each category
     for cat in ['buy', 'hold', 'sell', 'short']:
-        if cat in ['buy', 'hold']:
-            results[cat].sort(key=lambda x: x.get('score', 0), reverse=True)
-        else:
-            results[cat].sort(key=lambda x: x.get('score', 100))
+        results[cat].sort(key=lambda x: x.get('change_pct', 0), reverse=True)
 
+    data_status = _quote_data_status(stocks)
     return jsonify({
         'buy': results['buy'][:5],
         'hold': results['hold'][:5],
@@ -3526,6 +3786,8 @@ def penny_stocks():
         'short': results['short'][:5],
         'stocks': stocks,
         'count': len(stocks),
+        'data_status': data_status,
+        'data_mode': _quote_data_mode(stocks, data_status),
         'timestamp': datetime.now().isoformat()
     })
 
@@ -3568,6 +3830,9 @@ def stock_chart(ticker):
             '52_week_high': info.get('fiftyTwoWeekHigh'),
             '52_week_low': info.get('fiftyTwoWeekLow'),
             'current_price': round(hist['Close'].iloc[-1], 2),
+            'data_status': 'live',
+            'data_source': hist.attrs.get('data_source', 'provider'),
+            'data_as_of': hist.index[-1].isoformat() if len(hist.index) else None,
             'candles': candles,
             'candlestick_analysis': {
                 'patterns': patterns,
@@ -3577,19 +3842,28 @@ def stock_chart(ticker):
                 'trend_description': trend_description
             }
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except ValueError as exc:
+        return _json_error(str(exc), 400, 'invalid_ticker')
+    except Exception:
+        logger.exception('stock chart request failed for %s', ticker)
+        return _json_error('Unable to load chart data for that ticker', 502, 'provider_error')
 
 @app.route('/stock/<ticker>')
 def stock_page(ticker):
     """Stock detail page"""
     # Normalize ticker to handle index symbols (add ^ prefix if needed)
-    ticker_normalized = normalize_ticker(ticker)
+    try:
+        ticker_normalized = normalize_ticker(ticker)
+    except ValueError:
+        return render_template('index.html'), 404
     return render_template('stock.html', ticker=ticker_normalized)
 
 @app.route('/api/cache/clear', methods=['POST'])
 def clear_cache_endpoint():
     """Clear all cached data to force fresh API calls"""
+    denied = _admin_guard()
+    if denied:
+        return denied
     clear_cache()
     return jsonify({"status": "success", "message": "Cache cleared"})
 
@@ -3609,25 +3883,31 @@ def trading_sim_status():
 @app.route('/api/trading-sim/history', methods=['GET'])
 def trading_sim_history():
     """Get portfolio value history for charting"""
-    history = trading_sim.portfolio_history
-    initial_capital = trading_sim.INITIAL_CAPITAL
-    spy_start = trading_sim.spy_start_price
+    with trading_sim._lock:
+        history = list(trading_sim.portfolio_history)
+        initial_capital = trading_sim.INITIAL_CAPITAL
+        spy_start = trading_sim.spy_start_price
 
     # Calculate percentage returns for charting
     chart_data = []
     for point in history:
-        portfolio_return = ((point['total_value'] - initial_capital) / initial_capital) * 100
-        spy_return = 0
+        portfolio_return = (
+            ((point['total_value'] - initial_capital) / initial_capital) * 100
+            if point.get('total_value') is not None else None
+        )
+        spy_return = None
         if spy_start and point.get('spy_price'):
             spy_return = ((point['spy_price'] - spy_start) / spy_start) * 100
 
         chart_data.append({
             'timestamp': point['timestamp'],
-            'portfolio_value': point['total_value'],
-            'portfolio_return': round(portfolio_return, 2),
-            'spy_return': round(spy_return, 2),
+            'portfolio_value': point.get('total_value'),
+            'portfolio_return': round(portfolio_return, 2) if portfolio_return is not None else None,
+            'spy_return': round(spy_return, 2) if spy_return is not None else None,
             'cash': point.get('cash', 0),
-            'positions_value': point.get('positions_value', 0)
+            'positions_value': point.get('positions_value'),
+            'data_status': point.get('data_status', 'live' if point.get('total_value') is not None else 'unavailable'),
+            'benchmark_status': point.get('benchmark_status', 'live' if spy_return is not None else 'unavailable'),
         })
 
     return jsonify({
@@ -3642,7 +3922,11 @@ def trading_sim_history():
 def trading_sim_trades():
     """Get trade log with AI reasoning"""
     limit = request.args.get('limit', 50, type=int)
-    trades = trading_sim.trade_log[-limit:]  # Get most recent trades
+    if limit is None or limit < 1:
+        return _json_error('limit must be a positive whole number', 400, 'invalid_limit')
+    limit = max(1, min(limit, 200))
+    with trading_sim._lock:
+        trades = trading_sim.trade_log[-limit:]  # Get most recent trades
     trades.reverse()  # Most recent first
     return jsonify({
         'trades': trades,
@@ -3654,6 +3938,9 @@ def trading_sim_trades():
 @app.route('/api/trading-sim/execute', methods=['POST'])
 def trading_sim_execute():
     """Execute AI trading decision cycle - analyzes market and makes trades"""
+    denied = _admin_guard()
+    if denied:
+        return denied
     market_open, market_status = is_market_open()
 
     # Execute trades regardless of market hours for testing
@@ -3674,6 +3961,9 @@ def trading_sim_execute():
 @app.route('/api/trading-sim/reset', methods=['POST'])
 def trading_sim_reset():
     """Reset simulation to $100,000 starting capital"""
+    denied = _admin_guard()
+    if denied:
+        return denied
     trading_sim.reset()
     return jsonify({
         'status': 'success',
@@ -3685,14 +3975,24 @@ def trading_sim_reset():
 @app.route('/api/trading-sim/manual-trade', methods=['POST'])
 def trading_sim_manual_trade():
     """Execute a manual (human-initiated) trade that overrides AI control"""
-    data = request.get_json()
+    denied = _admin_guard()
+    if denied:
+        return denied
+    data = _safe_json_body()
+    if data is None:
+        return _json_error('Request body must be a JSON object', 400, 'invalid_json')
 
     trade_type = data.get('type')  # buy, sell, short, cover
-    ticker = data.get('ticker', '').upper()
-    quantity = data.get('quantity', 0)
+    try:
+        ticker = normalize_ticker(data.get('ticker', ''))
+    except ValueError as exc:
+        return _json_error(str(exc), 400, 'invalid_ticker')
+    quantity = _finite_positive_number(data.get('quantity'))
 
-    if not trade_type or not ticker or quantity <= 0:
-        return jsonify({'error': 'Missing required fields: type, ticker, quantity'}), 400
+    if not isinstance(trade_type, str) or trade_type not in {'buy', 'sell', 'short', 'cover'}:
+        return _json_error('type must be buy, sell, short, or cover', 400, 'invalid_trade_type')
+    if quantity is None:
+        return _json_error('quantity must be a positive finite number', 400, 'invalid_quantity')
 
     # Get current price
     price = trading_sim.get_current_price(ticker)
@@ -3723,16 +4023,22 @@ def trading_sim_manual_trade():
 @app.route('/api/trading-sim/close-position', methods=['POST'])
 def trading_sim_close_position():
     """Close an existing position (human override)"""
-    data = request.get_json()
-    ticker = data.get('ticker', '').upper()
+    denied = _admin_guard()
+    if denied:
+        return denied
+    data = _safe_json_body()
+    if data is None:
+        return _json_error('Request body must be a JSON object', 400, 'invalid_json')
+    try:
+        ticker = normalize_ticker(data.get('ticker', ''))
+    except ValueError as exc:
+        return _json_error(str(exc), 400, 'invalid_ticker')
 
-    if not ticker:
-        return jsonify({'error': 'Missing ticker'}), 400
+    with trading_sim._lock:
+        pos = trading_sim.positions.get(ticker)
+    if pos is None:
+        return _json_error(f'No position in {ticker}', 400, 'position_not_found')
 
-    if ticker not in trading_sim.positions:
-        return jsonify({'error': f'No position in {ticker}'}), 400
-
-    pos = trading_sim.positions[ticker]
     quantity = pos['quantity']
     side = pos['side']
 
@@ -3765,11 +4071,36 @@ def trading_sim_close_position():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+    admin_ready = bool(ADMIN_API_TOKEN) or APP_ENV not in ADMIN_REQUIRED_ENVS
+    return jsonify({
+        'status': 'healthy',
+        'service': 'stockpulse-api',
+        'environment': APP_ENV,
+        'market_data': 'fallback-enabled' if ALLOW_FALLBACK_MARKET_DATA else 'live-only',
+        'admin_token_configured': bool(ADMIN_API_TOKEN),
+        'admin_required': APP_ENV in ADMIN_REQUIRED_ENVS,
+        'mutation_controls_available': admin_ready,
+        'ready': admin_ready,
+        'timestamp': datetime.now().isoformat(),
+    })
 
-@app.errorhandler(404)
-def not_found(e):
-    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/ready')
+def readiness():
+    """Report whether deployment-required configuration is ready for traffic."""
+    checks = {
+        'admin_auth': bool(ADMIN_API_TOKEN) or APP_ENV not in ADMIN_REQUIRED_ENVS,
+        'market_data_mode': not (APP_ENV in ADMIN_REQUIRED_ENVS and ALLOW_FALLBACK_MARKET_DATA),
+    }
+    ready = all(checks.values())
+    return jsonify({
+        'status': 'ready' if ready else 'not_ready',
+        'service': 'stockpulse-api',
+        'environment': APP_ENV,
+        'checks': checks,
+        'timestamp': datetime.now().isoformat(),
+    }), 200 if ready else 503
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8080)
+    port = int(os.environ.get('PORT', os.environ.get('API_PORT', '8080')))
+    app.run(debug=DEBUG, host='0.0.0.0', port=port)

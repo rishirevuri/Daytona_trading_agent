@@ -1,8 +1,8 @@
-# Investment Scorer
+# StockPulse
 
-**Investment Scorer** is an intelligent stock analysis platform designed to give traders a clear edge. It instantly calculates a comprehensive **Investment Score (1-100)** for any stock or ETF by synthesizing **Technical Analysis, Fundamental Data, and Market Sentiment** into a single actionable metric.
+**StockPulse** is a provider-sourced market intelligence platform for research and paper trading. It calculates an **Investment Score (1-100)** for stocks and ETFs from technical, fundamental, and market-sentiment inputs, while labeling watchlists and unavailable data explicitly.
 
-Whether you are a day trader or long-term investor, Investment Scorer helps you cut through the noise with clear **Buy/Sell recommendations**, real-time data, and AI-driven insights.
+Whether you are a day trader or long-term investor, StockPulse keeps the source, freshness, and limits of each signal visible.
 
 ## Features
 
@@ -18,13 +18,62 @@ Whether you are a day trader or long-term investor, Investment Scorer helps you 
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 
-# Run the server
-python app.py
+# Run the server (development)
+FLASK_DEBUG=1 .venv/bin/python app.py
 
 # Open browser to http://localhost:8080
 ```
+
+## Production deployment
+
+The container uses Gunicorn rather than Flask's development server:
+
+```bash
+gunicorn --bind 0.0.0.0:8080 --workers 2 --threads 4 --timeout 120 app:app
+```
+
+Market data is **live-only by default**. If a provider is unavailable, the
+API returns an unavailable/empty state instead of presenting old demo quotes
+as current. For an explicitly labeled offline demo only, set
+`ALLOW_FALLBACK_MARKET_DATA=1`; responses then include `data_mode: "fallback"`
+and `stale: true`.
+
+Production and staging environments fail closed for cache and simulator
+mutations unless `ADMIN_API_TOKEN` is configured. Send that value in the
+`X-Admin-Token` header; the simulator also accepts it for the current browser
+session. `/health` is a liveness response, while `/ready` returns `503` until
+required deployment configuration is present.
+
+Useful runtime settings:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` / `API_PORT` | `8080` | HTTP bind port |
+| `FLASK_DEBUG` | off | Development debugger/reloader |
+| `CORS_ORIGINS` | same-origin | Comma-separated allowed frontend origins |
+| `MARKET_DATA_TIMEOUT_SECONDS` | `10` | Provider request timeout |
+| `APP_ENV` | `development` with `FLASK_DEBUG=1`, otherwise `production` | Runtime environment; production/staging require admin auth for mutations |
+| `ADMIN_API_TOKEN` | unset | Required in production/staging for cache-clear and simulator mutations via `X-Admin-Token` |
+| `SERVE_REACT_FRONTEND` | off | Serve the built `frontend/build` CRA shell |
+| `ELEVENLABS_API_KEY` | unset | Optional text-to-speech provider |
+
+Run the focused regression suite with:
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+Build the optional React shell with:
+
+```bash
+cd frontend && npm ci && npm run build
+```
+
+The React build toolchain remains a development dependency; check the
+production bundle with `npm audit --omit=dev`.
 
 ## Daytona Cloud Deployment
 
@@ -126,8 +175,7 @@ The investment score combines:
 The landing page now features a comprehensive Market Snapshot:
 
 - **Market Sentiment Bar**: VIX, Fear/Greed Index, S&P 500 trend, Treasury yields
-- **Top BUY Signals**: Stocks with highest investment scores
-- **Short Candidates**: Stocks with lowest scores for short opportunities
+- **Market Leaders/Laggards**: Provider-sourced one-day momentum watchlists
 - **Daily Movers**: Biggest gainers and losers
 - **Market News**: Aggregated news with sentiment analysis
 - Click any stock to view detailed charts and analysis
@@ -147,7 +195,7 @@ GET /stock/AAPL
 
 ## 📱 Install as Native App (PWA)
 
-Investment Scorer is a **Progressive Web App (PWA)**. You can install it directly to your home screen on iOS, Android, macOS, and Windows for a full-screen, native, and offline-capable experience.
+StockPulse is a **Progressive Web App (PWA)**. You can install it directly to your home screen on iOS, Android, macOS, and Windows for a full-screen experience; market API responses are never replayed from cache as current data.
 
 ### **iOS (iPhone & iPad)**
 

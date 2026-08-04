@@ -111,7 +111,7 @@
         font-family: var(--serif);
         font-size: 3.5rem;
         font-weight: 400;
-        letter-spacing: -0.03em;
+        letter-spacing: 0;
         line-height: 1;
       }
 
@@ -212,6 +212,16 @@
         margin-bottom: 48px;
       }
 
+      .data-status {
+        min-height: 24px;
+        margin: -28px 0 28px;
+        color: var(--text-muted);
+        font-size: 0.75rem;
+      }
+      .data-status.warning {
+        color: var(--warning);
+      }
+
       .market-item {
         background: var(--bg);
         padding: 20px;
@@ -307,7 +317,7 @@
       .stock-ticker {
         font-size: 0.9375rem;
         font-weight: 600;
-        letter-spacing: -0.01em;
+        letter-spacing: 0;
       }
       .stock-name {
         font-size: 0.8125rem;
@@ -326,8 +336,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 48px;
-        height: 48px;
+        width: 72px;
+        min-height: 40px;
+        padding: 0 6px;
+        height: 40px;
         border-radius: 50%;
         font-size: 0.875rem;
         font-weight: 600;
@@ -1265,6 +1277,74 @@
         align-items: center;
       }
 
+      .sim-message {
+        display: none;
+        width: 100%;
+        margin: 0 0 12px;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text-secondary);
+        background: var(--bg-card);
+        font-size: 0.8125rem;
+      }
+
+      .sim-message.visible {
+        display: block;
+      }
+
+      .sim-message.success {
+        border-color: var(--positive);
+        color: var(--positive);
+        background: var(--positive-muted);
+      }
+
+      .sim-message.error {
+        border-color: var(--negative);
+        color: var(--negative);
+        background: var(--negative-muted);
+      }
+
+      .sim-confirmation {
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        width: 100%;
+        margin: 0 0 12px;
+        padding: 10px 12px;
+        border: 1px solid var(--warning);
+        border-radius: 6px;
+        color: var(--text);
+        background: var(--warning-muted);
+        font-size: 0.8125rem;
+      }
+
+      .sim-confirmation.visible {
+        display: flex;
+      }
+
+      .sim-confirmation-actions {
+        display: flex;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+
+      .sim-confirmation-actions button {
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        color: var(--text);
+        background: var(--bg-card);
+        cursor: pointer;
+        font: inherit;
+      }
+
+      .sim-confirmation-actions button:first-child {
+        border-color: var(--warning);
+        color: var(--warning);
+      }
+
       .sim-btn {
         padding: 8px 16px;
         font-size: 0.8125rem;
@@ -1335,6 +1415,25 @@
         height: 8px;
         border-radius: 50%;
         background: currentColor;
+      }
+
+      .sim-admin-token {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+        color: var(--text-muted);
+        font-size: 0.6875rem;
+      }
+
+      .sim-admin-token input {
+        width: 150px;
+        padding: 7px 9px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        background: var(--bg);
+        font: inherit;
       }
 
       .sim-charts {
@@ -1925,19 +2024,20 @@
 
           <div id="snapshot-content" style="display: none">
             <div class="market-strip" id="market-strip"></div>
+            <div class="data-status" id="snapshot-status" role="status"></div>
 
             <div class="grid-2" style="margin-bottom: 48px">
               <div>
                 <div class="section-header">
-                  <h2>Strong Buys</h2>
-                  <span class="meta">Score 75+</span>
+                  <h2>Market Leaders</h2>
+                  <span class="meta">One-day momentum</span>
                 </div>
                 <div class="stock-list" id="buys-list"></div>
               </div>
               <div>
                 <div class="section-header">
-                  <h2>Short Candidates</h2>
-                  <span class="meta">Score &lt;40</span>
+                  <h2>Market Laggards</h2>
+                  <span class="meta">One-day risk watch</span>
                 </div>
                 <div class="stock-list" id="shorts-list"></div>
               </div>
@@ -2010,9 +2110,8 @@
                     <th>Company</th>
                     <th>Date</th>
                     <th>Days</th>
-                    <th>Prev Surprise</th>
-                    <th>Prediction</th>
-                    <th>Score</th>
+                    <th>Signal</th>
+                    <th>Source</th>
                   </tr>
                 </thead>
                 <tbody id="earnings-tbody"></tbody>
@@ -2052,25 +2151,25 @@
           <div id="penny-content" style="display: none">
             <!-- BUY Section -->
             <div class="penny-category" id="penny-buy-section">
-              <h3 class="penny-category-header buy">📈 BUY Signals</h3>
+              <h3 class="penny-category-header buy">📈 Positive Momentum Watch</h3>
               <div class="penny-grid" id="penny-buy-grid"></div>
             </div>
 
             <!-- HOLD Section -->
             <div class="penny-category" id="penny-hold-section">
-              <h3 class="penny-category-header hold">⏸️ HOLD</h3>
+              <h3 class="penny-category-header hold">⏸️ Mixed Momentum</h3>
               <div class="penny-grid" id="penny-hold-grid"></div>
             </div>
 
             <!-- SELL Section -->
             <div class="penny-category" id="penny-sell-section">
-              <h3 class="penny-category-header sell">📉 SELL Signals</h3>
+              <h3 class="penny-category-header sell">📉 Weak Momentum</h3>
               <div class="penny-grid" id="penny-sell-grid"></div>
             </div>
 
             <!-- SHORT Section -->
             <div class="penny-category" id="penny-short-section">
-              <h3 class="penny-category-header short">🔻 SHORT Candidates</h3>
+              <h3 class="penny-category-header short">🔻 High Risk Watch</h3>
               <div class="penny-grid" id="penny-short-grid"></div>
             </div>
 
@@ -2131,6 +2230,7 @@
               <button
                 class="sim-btn sim-btn-primary"
                 id="execute-btn"
+                data-sim-mutation="true"
                 onclick="executeTrades()"
               >
                 Execute AI Trading Cycle
@@ -2143,6 +2243,7 @@
               </button>
               <button
                 class="sim-btn sim-btn-danger"
+                data-sim-mutation="true"
                 onclick="resetSimulation()"
               >
                 Reset Simulation
@@ -2150,6 +2251,24 @@
               <div class="market-status closed" id="market-status">
                 <span class="market-status-dot"></span>
                 <span id="market-status-text">Market Closed</span>
+              </div>
+              <label class="sim-admin-token" id="sim-admin-token-wrap">
+                Admin token
+                <input
+                  id="sim-admin-token"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="Required"
+                  oninput="updateSimAuthState()"
+                />
+              </label>
+            </div>
+            <div id="sim-message" class="sim-message" role="status" aria-live="polite"></div>
+            <div id="sim-confirmation" class="sim-confirmation" role="alertdialog" aria-live="assertive" aria-hidden="true">
+              <span id="sim-confirmation-message"></span>
+              <div class="sim-confirmation-actions">
+                <button type="button" onclick="resolveSimConfirmation(true)">Confirm</button>
+                <button type="button" onclick="resolveSimConfirmation(false)">Cancel</button>
               </div>
             </div>
 
@@ -2227,6 +2346,7 @@
                 <button
                   type="button"
                   class="sim-btn"
+                  data-sim-mutation="true"
                   style="background: var(--positive); color: white"
                   onclick="executeManualTrade('buy')"
                 >
@@ -2235,6 +2355,7 @@
                 <button
                   type="button"
                   class="sim-btn"
+                  data-sim-mutation="true"
                   style="background: var(--negative); color: white"
                   onclick="executeManualTrade('sell')"
                 >
@@ -2243,6 +2364,7 @@
                 <button
                   type="button"
                   class="sim-btn"
+                  data-sim-mutation="true"
                   style="background: var(--warning); color: black"
                   onclick="executeManualTrade('short')"
                 >
@@ -2365,6 +2487,10 @@
         if (section === "earnings") loadEarningsCalendar();
         if (section === "penny") loadPennyStocks();
         if (section === "trading-sim") loadTradingSim();
+        const url = new URL(window.location.href);
+        if (section === "snapshot") url.searchParams.delete("section");
+        else url.searchParams.set("section", section);
+        window.history.replaceState({ section }, "", url);
         // Preserve scroll position
         window.scrollTo(0, scrollPos);
       }
@@ -2394,28 +2520,71 @@
         }
       }
 
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function formatPriceValue(value) {
+        if (value === null || value === undefined || value === "") return "N/A";
+        const number = Number(value);
+        return Number.isFinite(number)
+          ? number.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : "--";
+      }
+
+      function formatPercent(value) {
+        if (value === null || value === undefined || value === "") return "N/A";
+        const number = Number(value);
+        return Number.isFinite(number)
+          ? (number > 0 ? "+" : "") + number.toFixed(2) + "%"
+          : "N/A";
+      }
+
+      function safeExternalUrl(value) {
+        try {
+          const url = new URL(value || "", window.location.origin);
+          return ["http:", "https:"].includes(url.protocol) ? url.href : "#";
+        } catch (e) {
+          return "#";
+        }
+      }
+
       async function loadSnapshot() {
-        console.log("loadSnapshot called");
-        const loading = document.getElementById("snapshot-loading");
+          const loading = document.getElementById("snapshot-loading");
         const content = document.getElementById("snapshot-content");
 
         if (loading) loading.classList.add("active");
         if (content) content.style.display = "none";
 
         try {
-          console.log("Fetching /api/snapshot...");
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
 
           const response = await fetch("/api/snapshot", {
             signal: controller.signal,
           });
           clearTimeout(timeoutId);
 
-          console.log("Response status:", response.status);
           if (!response.ok) throw new Error("API error: " + response.status);
           const data = await response.json();
-          console.log("Data received:", Object.keys(data));
+          const status = document.getElementById("snapshot-status");
+          if (status) {
+            const stale = data.data_mode === "fallback";
+            const incomplete = data.data_status !== "live";
+            status.textContent = stale
+              ? "Showing configured fallback quotes. Reconnect to refresh live data."
+              : data.data_status === "unavailable"
+                ? "Market providers are unavailable. No recommendations are being shown."
+                : incomplete
+                  ? "Some market providers are unavailable; the visible lists may be incomplete."
+                : "Quotes are provider-sourced; one-day lists are watchlists, not trade calls.";
+            status.className = "data-status " + (stale || incomplete ? "warning" : "");
+          }
 
           // Safely handle market sentiment
           const sentiment = data.market_sentiment || {};
@@ -2442,39 +2611,17 @@
             treasuryEl.textContent = treasury !== null ? treasury + "%" : "--";
           }
 
-          // Render all sections with try-catch for each
-          try {
-            renderMarketStrip(data.market_indexes || []);
-          } catch (e) {
-            console.error("Market strip error:", e);
-          }
-          try {
-            renderStockList("buys-list", data.strong_buys || []);
-          } catch (e) {
-            console.error("Buys list error:", e);
-          }
-          try {
-            renderStockList("shorts-list", data.shorts || []);
-          } catch (e) {
-            console.error("Shorts list error:", e);
-          }
-          try {
-            renderMoversList("gainers-list", data.gainers || []);
-          } catch (e) {
-            console.error("Gainers error:", e);
-          }
-          try {
-            renderMoversList("losers-list", data.losers || []);
-          } catch (e) {
-            console.error("Losers error:", e);
-          }
+          renderMarketStrip(data.market_indexes || []);
+          renderStockList("buys-list", data.leaders || data.strong_buys || []);
+          renderStockList("shorts-list", data.laggards || data.shorts || []);
+          renderMoversList("gainers-list", data.gainers || []);
+          renderMoversList("losers-list", data.losers || []);
 
           if (content) content.style.display = "block";
         } catch (error) {
-          console.error("Snapshot load error:", error);
           if (content) {
             content.innerHTML =
-              '<div class="error">Failed to load market data. Please refresh the page.</div>';
+              '<div class="error">Market data could not be loaded. Check your connection and try again.</div>';
             content.style.display = "block";
           }
         } finally {
@@ -2493,29 +2640,28 @@
         container.innerHTML = indexes
           .slice(0, 6)
           .map((idx) => {
-            const changePct = idx.change_pct ?? 0;
-            const changeClass = changePct >= 0 ? "up" : "down";
-            const sign = changePct >= 0 ? "+" : "";
+            const changePct = Number(idx.change_pct);
+            const hasChange = Number.isFinite(changePct);
+            const changeClass = hasChange ? (changePct >= 0 ? "up" : "down") : "neutral";
             const name = idx.name || "Index";
             const price = idx.price
               ? idx.price.toLocaleString(undefined, {
                   maximumFractionDigits: 0,
                 })
               : "--";
-            const url = idx.url || "https://finance.yahoo.com";
+            const url = safeExternalUrl(idx.url || "https://finance.yahoo.com");
             return (
               '<a href="' +
               url +
               '" target="_blank" class="market-item" style="text-decoration: none; color: inherit;"><div class="symbol">' +
-              name +
+              escapeHtml(name) +
               '</div><div class="price">' +
               price +
               '</div><div class="change ' +
               changeClass +
               '">' +
-              sign +
-              changePct.toFixed(2) +
-              "%</div></a>"
+              escapeHtml(hasChange ? formatPercent(changePct) : "N/A") +
+              "</div></a>"
             );
           })
           .join("");
@@ -2535,20 +2681,21 @@
             const ticker = s.ticker || "N/A";
             const name = s.company_name || "";
             const price = s.current_price ?? "--";
-            const score = s.score ?? 50;
+            const changePct = Number(s.change_pct);
+            const hasChange = Number.isFinite(changePct);
             return (
               '<div class="stock-card" onclick="analyzeFromSnapshot(\'' +
-              ticker +
+              escapeHtml(ticker) +
               '\')"><div class="stock-info"><span class="stock-ticker">' +
-              ticker +
+              escapeHtml(ticker) +
               '</span><span class="stock-name">' +
-              name +
+              escapeHtml(name) +
               '</span></div><div class="stock-price">$' +
-              price +
+              escapeHtml(formatPriceValue(price)) +
               '</div><div class="stock-score ' +
-              getScoreClass(score) +
+              (hasChange ? "medium" : "neutral") +
               '">' +
-              score +
+              escapeHtml(hasChange ? formatPercent(changePct) : "N/A") +
               "</div></div>"
             );
           })
@@ -2568,22 +2715,21 @@
           .map((m) => {
             const ticker = m.ticker || "N/A";
             const price = m.price ?? "--";
-            const changePct = m.change_pct ?? 0;
-            const changeClass = changePct >= 0 ? "up" : "down";
-            const sign = changePct >= 0 ? "+" : "";
+            const changePct = Number(m.change_pct);
+            const hasChange = Number.isFinite(changePct);
+            const changeClass = hasChange ? (changePct >= 0 ? "up" : "down") : "neutral";
             return (
               '<div class="mover-row" onclick="analyzeFromSnapshot(\'' +
-              ticker +
+              escapeHtml(ticker) +
               '\')"><span class="mover-ticker">' +
-              ticker +
+              escapeHtml(ticker) +
               '</span><span class="mover-price">$' +
-              price +
+              escapeHtml(formatPriceValue(price)) +
               '</span><span class="mover-change ' +
               changeClass +
               '">' +
-              sign +
-              changePct +
-              "%</span></div>"
+              escapeHtml(hasChange ? formatPercent(changePct) : "N/A") +
+              "</span></div>"
             );
           })
           .join("");
@@ -2601,7 +2747,7 @@
           .slice(0, 6)
           .map((n) => {
             const title = n.title || "Untitled";
-            const link = n.link || "#";
+            const link = safeExternalUrl(n.link || "#");
             const publisher = n.publisher || "Source";
             const published = n.published || "Recent";
             const sentiment = n.sentiment || "neutral";
@@ -2609,13 +2755,13 @@
               '<div class="news-item"><a href="' +
               link +
               '" target="_blank" rel="noopener">' +
-              title +
+              escapeHtml(title) +
               '</a><div class="news-meta"><span>' +
-              publisher +
+              escapeHtml(publisher) +
               "</span><span>" +
-              published +
+              escapeHtml(published) +
               '</span><span class="news-sentiment ' +
-              sentiment +
+              escapeHtml(sentiment) +
               '">' +
               sentiment +
               "</span></div></div>"
@@ -2656,42 +2802,23 @@
             if (filteredEarnings.length > 0) {
               tbody.innerHTML = filteredEarnings
                 .map((e) => {
-                  const predClass =
-                    e.prediction === "LIKELY BEAT"
-                      ? "beat"
-                      : e.prediction === "LIKELY MISS"
-                        ? "miss"
-                        : "neutral";
                   const daysText = e.days_until === 0 ? "Today" : e.days_until === 1 ? "1 day" : e.days_until + " days";
                   return (
                     "<tr onclick=\"analyzeFromSnapshot('" +
-                    e.ticker +
-                    '\')">\<td class="ticker-link">' +
-                    e.ticker +
+                    escapeHtml(e.ticker) +
+                    '\')"><td class="ticker-link">' +
+                    escapeHtml(e.ticker) +
                     "</td><td>" +
-                    e.company_name +
+                    escapeHtml(e.company_name) +
                     "</td><td>" +
-                    e.earnings_date +
+                    escapeHtml(e.earnings_date) +
                     "</td><td>" +
                     daysText +
-                    '</td><td style="color: ' +
-                    (e.prev_surprise_pct > 0
-                      ? "var(--positive)"
-                      : e.prev_surprise_pct < 0
-                        ? "var(--negative)"
-                        : "") +
-                    '">' +
-                    (e.prev_surprise_pct > 0 ? "+" : "") +
-                    e.prev_surprise_pct +
-                    '%</td><td><span class="badge ' +
-                    predClass +
-                    '">' +
-                    e.prediction +
-                    '</span></td><td><span class="badge ' +
-                    getScoreClass(e.score) +
-                    '">' +
-                    e.score +
-                    "</span></td></tr>"
+                    '</td><td><span class="badge neutral">' +
+                    escapeHtml(e.signal || "SCHEDULED EVENT") +
+                    '</span></td><td>' +
+                    escapeHtml(e.data_source || "unavailable") +
+                    "</td></tr>"
                   );
                 })
                 .join("");
@@ -2730,38 +2857,37 @@
 
           // Render each category
           const renderPennyCard = (stock) => {
+            const change = Number(stock.change_pct);
             const scoreColor =
-              stock.score >= 60
+              change >= 1.5
                 ? "var(--positive)"
-                : stock.score >= 40
+                : change >= -0.5
                   ? "var(--warning)"
                   : "var(--negative)";
             const price = stock.price || stock.current_price || 0;
             const priceDisplay =
               price < 1 ? price.toFixed(4) : price.toFixed(2);
-            const rsi = stock.rsi || 50;
-            const volatility = stock.volatility || 20;
             return `
-                        <div class="penny-card" onclick="analyzeFromSnapshot('${stock.ticker}')">
+                        <div class="penny-card" onclick="analyzeFromSnapshot('${escapeHtml(stock.ticker)}')">
                             <div class="penny-card-header">
-                                <div class="penny-ticker"><a href="https://finance.yahoo.com/quote/${stock.ticker}" target="_blank" onclick="event.stopPropagation();">${stock.ticker}</a></div>
+                                <div class="penny-ticker"><a href="https://finance.yahoo.com/quote/${escapeHtml(stock.ticker)}" target="_blank" rel="noopener" onclick="event.stopPropagation();">${escapeHtml(stock.ticker)}</a></div>
                                 <div class="penny-price" style="color: ${scoreColor}">$${priceDisplay}</div>
                             </div>
-                            <div class="penny-company">${stock.company_name || stock.ticker}</div>
-                            <div class="penny-sector"><span style="background: var(--bg-hover); padding: 2px 8px; border-radius: 4px; font-size: 0.6875rem; color: var(--text-secondary);">${stock.sector || "N/A"}</span></div>
-                            <div class="penny-description" style="font-size: 0.6875rem; color: var(--text-muted); margin: 8px 0; line-height: 1.4;">${stock.description || ""}</div>
+                            <div class="penny-company">${escapeHtml(stock.company_name || stock.ticker)}</div>
+                            <div class="penny-sector"><span style="background: var(--bg-hover); padding: 2px 8px; border-radius: 4px; font-size: 0.6875rem; color: var(--text-secondary);">${escapeHtml(stock.sector || "N/A")}</span></div>
+                            <div class="penny-description" style="font-size: 0.6875rem; color: var(--text-muted); margin: 8px 0; line-height: 1.4;">${escapeHtml(stock.description || "")}</div>
                             <div class="penny-stats">
                                 <div class="penny-stat">
-                                    <div class="penny-stat-label">Score</div>
-                                    <div class="penny-stat-value" style="color: ${scoreColor}">${stock.score}</div>
+                                    <div class="penny-stat-label">1D change</div>
+                                    <div class="penny-stat-value" style="color: ${scoreColor}">${escapeHtml(formatPercent(stock.change_pct))}</div>
                                 </div>
                                 <div class="penny-stat">
-                                    <div class="penny-stat-label">RSI</div>
-                                    <div class="penny-stat-value" style="color: ${rsi < 30 ? "var(--positive)" : rsi > 70 ? "var(--negative)" : "var(--warning)"}">${rsi}</div>
+                                    <div class="penny-stat-label">Signal</div>
+                                    <div class="penny-stat-value" style="color: ${scoreColor}">${escapeHtml(stock.signal || "WATCH")}</div>
                                 </div>
                                 <div class="penny-stat">
-                                    <div class="penny-stat-label">Vol%</div>
-                                    <div class="penny-stat-value">${volatility}%</div>
+                                    <div class="penny-stat-label">Source</div>
+                                    <div class="penny-stat-value">${escapeHtml(stock.data_source || "unavailable")}</div>
                                 </div>
                             </div>
                         </div>
@@ -2803,7 +2929,6 @@
           content.style.display = "block";
           pennyLoaded = true;
         } catch (error) {
-          console.error("Penny stocks error:", error);
           noMsg.textContent = "Failed to load penny stock data";
           noMsg.style.display = "block";
           content.style.display = "block";
@@ -2816,6 +2941,115 @@
       let simLoaded = false;
       let performanceChart = null;
       let holdingsChart = null;
+      let simAdminTokenRequired = false;
+      let simConfirmationResolver = null;
+
+      function getSimAdminToken() {
+        const input = document.getElementById("sim-admin-token");
+        const inputValue = input ? input.value.trim() : "";
+        if (inputValue) {
+          sessionStorage.setItem("stockpulse_admin_token", inputValue);
+          return inputValue;
+        }
+        return sessionStorage.getItem("stockpulse_admin_token") || "";
+      }
+
+      function simMutationHeaders(includeJson = false) {
+        const headers = includeJson ? { "Content-Type": "application/json" } : {};
+        const token = getSimAdminToken();
+        if (token) headers["X-Admin-Token"] = token;
+        return headers;
+      }
+
+      function setSimMessage(message, kind = "info") {
+        const element = document.getElementById("sim-message");
+        if (!element) return;
+        element.textContent = message || "";
+        element.className = "sim-message" + (message ? " visible " + kind : "");
+      }
+
+      function requestSimConfirmation(message) {
+        const element = document.getElementById("sim-confirmation");
+        const messageElement = document.getElementById("sim-confirmation-message");
+        if (!element || !messageElement) return Promise.resolve(false);
+        if (simConfirmationResolver) simConfirmationResolver(false);
+        messageElement.textContent = message;
+        element.classList.add("visible");
+        element.setAttribute("aria-hidden", "false");
+        return new Promise((resolve) => {
+          simConfirmationResolver = resolve;
+        });
+      }
+
+      function resolveSimConfirmation(confirmed) {
+        const element = document.getElementById("sim-confirmation");
+        if (element) {
+          element.classList.remove("visible");
+          element.setAttribute("aria-hidden", "true");
+        }
+        const resolver = simConfirmationResolver;
+        simConfirmationResolver = null;
+        if (resolver) resolver(confirmed);
+      }
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && simConfirmationResolver) {
+          resolveSimConfirmation(false);
+        }
+      });
+
+      function apiErrorMessage(data, fallback) {
+        return (data && (data.error || data.message)) || fallback;
+      }
+
+      function setSimMutationAvailability(available) {
+        document.querySelectorAll("[data-sim-mutation]").forEach((control) => {
+          control.disabled = !available;
+          control.title = available
+            ? ""
+            : "Admin authorization is required for simulation changes";
+        });
+      }
+
+      function updateSimAuthState() {
+        const available = !simAdminTokenRequired || Boolean(getSimAdminToken());
+        setSimMutationAvailability(available);
+        if (!available) {
+          setSimMessage("Enter the configured admin token to enable simulation changes.", "error");
+        } else if (simAdminTokenRequired) {
+          setSimMessage("Admin authorization supplied for this browser session.", "success");
+        }
+      }
+
+      async function checkSimReadiness() {
+        try {
+          const response = await fetch("/health", { cache: "no-store" });
+          const data = await response.json();
+          simAdminTokenRequired = data.admin_token_configured === true;
+          const tokenWrap = document.getElementById("sim-admin-token-wrap");
+          const tokenInput = document.getElementById("sim-admin-token");
+          if (simAdminTokenRequired && tokenWrap) tokenWrap.style.display = "inline-flex";
+          if (simAdminTokenRequired && tokenInput) {
+            tokenInput.value = sessionStorage.getItem("stockpulse_admin_token") || "";
+          }
+          const available = response.ok && data.mutation_controls_available === true &&
+            (!simAdminTokenRequired || Boolean(getSimAdminToken()));
+          setSimMutationAvailability(available);
+          if (!response.ok || !data.mutation_controls_available) {
+            setSimMessage(
+              "Simulation changes are disabled until admin authorization is configured for this deployment.",
+              "error",
+            );
+          } else if (simAdminTokenRequired && !getSimAdminToken()) {
+            setSimMessage("Enter the configured admin token to enable simulation changes.", "error");
+          }
+          return available;
+        } catch (error) {
+          setSimMutationAvailability(false);
+          setSimMessage("Unable to verify simulation authorization.", "error");
+          return false;
+        }
+      }
 
       async function loadTradingSim() {
         if (simLoaded) {
@@ -2828,13 +3062,15 @@
         if (content) content.style.display = "none";
 
         try {
+          await checkSimReadiness();
           await refreshSimStatus();
           await loadTradeLog();
           await renderPerformanceChart();
           if (content) content.style.display = "block";
           simLoaded = true;
         } catch (error) {
-          console.error("Trading sim load error:", error);
+          setSimMessage(error.message || "Unable to load simulation data.", "error");
+          if (content) content.style.display = "block";
         } finally {
           if (loading) loading.classList.remove("active");
         }
@@ -2844,6 +3080,9 @@
         try {
           const response = await fetch("/api/trading-sim/status");
           const data = await response.json();
+          if (!response.ok) {
+            throw new Error(apiErrorMessage(data, "Unable to load simulation status."));
+          }
 
           // Update stats
           const totalValue = document.getElementById("sim-total-value");
@@ -2852,30 +3091,38 @@
           const alphaEl = document.getElementById("sim-alpha");
 
           if (totalValue) {
-            totalValue.textContent = "$" + formatNumber(data.total_value);
+            totalValue.textContent = data.total_value === null || data.total_value === undefined
+              ? "N/A"
+              : "$" + formatNumber(data.total_value);
             totalValue.className =
               "sim-stat-value " +
-              (data.total_return >= 0 ? "positive" : "negative");
+              (Number.isFinite(Number(data.total_return))
+                ? data.total_return >= 0 ? "positive" : "negative"
+                : "neutral");
           }
           if (totalReturn) {
-            const sign = data.total_return >= 0 ? "+" : "";
-            totalReturn.textContent = sign + data.total_return.toFixed(2) + "%";
+            totalReturn.textContent = formatPercent(data.total_return);
             totalReturn.className =
               "sim-stat-value " +
-              (data.total_return >= 0 ? "positive" : "negative");
+              (Number.isFinite(Number(data.total_return))
+                ? data.total_return >= 0 ? "positive" : "negative"
+                : "neutral");
           }
           if (spyReturn) {
-            const sign = data.spy_return >= 0 ? "+" : "";
-            spyReturn.textContent = sign + data.spy_return.toFixed(2) + "%";
+            spyReturn.textContent = formatPercent(data.spy_return);
             spyReturn.className =
               "sim-stat-value " +
-              (data.spy_return >= 0 ? "positive" : "negative");
+              (Number.isFinite(Number(data.spy_return))
+                ? data.spy_return >= 0 ? "positive" : "negative"
+                : "neutral");
           }
           if (alphaEl) {
-            const sign = data.alpha >= 0 ? "+" : "";
-            alphaEl.textContent = sign + data.alpha.toFixed(2) + "%";
+            alphaEl.textContent = formatPercent(data.alpha);
             alphaEl.className =
-              "sim-stat-value " + (data.alpha >= 0 ? "positive" : "negative");
+              "sim-stat-value " +
+              (Number.isFinite(Number(data.alpha))
+                ? data.alpha >= 0 ? "positive" : "negative"
+                : "neutral");
           }
 
           // Update market status
@@ -2900,7 +3147,8 @@
           // Update holdings chart
           renderHoldingsChart(data.cash, data.positions || []);
         } catch (error) {
-          console.error("Error refreshing sim status:", error);
+          setSimMessage(error.message || "Unable to refresh simulation status.", "error");
+          throw error;
         }
       }
 
@@ -2921,48 +3169,64 @@
 
         tbody.innerHTML = positions
           .map((p) => {
-            const pnlClass = p.pnl >= 0 ? "positive" : "negative";
-            const sign = p.pnl >= 0 ? "+" : "";
+            const ticker = String(p.ticker || "");
+            const safeTicker = escapeHtml(ticker);
+            const side = p.side === "long" || p.side === "short" ? p.side : "unknown";
+            const quantity = Number(p.quantity);
+            const avgPrice = Number(p.avg_price);
+            const currentPrice = Number(p.current_price);
+            const pnl = Number(p.pnl);
+            const pnlPct = Number(p.pnl_pct);
+            const hasPnl = Number.isFinite(pnl);
+            const pnlClass = hasPnl ? (pnl >= 0 ? "positive" : "negative") : "neutral";
+            const pnlLabel = hasPnl
+              ? (pnl >= 0 ? "+$" : "-$") + Math.abs(pnl).toFixed(2)
+              : "N/A";
+            const pnlPctLabel = Number.isFinite(pnlPct) ? formatPercent(pnlPct) : "N/A";
             const manualBadge = p.human_controlled
               ? '<span style="margin-left: 6px; font-size: 0.625rem; padding: 2px 6px; background: var(--warning-muted); color: var(--warning); border-radius: 3px;">MANUAL</span>'
               : "";
             return `<tr>
-                    <td style="font-weight: 600; cursor: pointer;" onclick="analyzeFromSnapshot('${p.ticker}')">${p.ticker}${manualBadge}</td>
-                    <td><span class="position-side ${p.side}">${p.side}</span></td>
-                    <td>${p.quantity}</td>
-                    <td>$${p.avg_price.toFixed(2)}</td>
-                    <td>$${p.current_price.toFixed(2)}</td>
-                    <td>$${formatNumber(p.value)}</td>
-                    <td style="color: var(--${pnlClass})">${sign}$${p.pnl.toFixed(2)}</td>
-                    <td style="color: var(--${pnlClass})">${sign}${p.pnl_pct.toFixed(2)}%</td>
-                    <td><button class="close-btn" onclick="event.stopPropagation(); closePosition('${p.ticker}')">Close</button></td>
+                    <td style="font-weight: 600; cursor: pointer;" onclick="analyzeFromSnapshot('${safeTicker}')">${safeTicker}${manualBadge}</td>
+                    <td><span class="position-side ${side}">${escapeHtml(side)}</span></td>
+                    <td>${Number.isFinite(quantity) ? quantity : "N/A"}</td>
+                    <td>$${Number.isFinite(avgPrice) ? avgPrice.toFixed(2) : "--"}</td>
+                    <td>${Number.isFinite(currentPrice) ? "$" + currentPrice.toFixed(2) : "N/A"}</td>
+                    <td>${p.value === null || p.value === undefined ? "N/A" : "$" + formatNumber(p.value)}</td>
+                    <td style="color: var(--${pnlClass})">${pnlLabel}</td>
+                    <td style="color: var(--${pnlClass})">${pnlPctLabel}</td>
+                    <td><button class="close-btn" data-sim-mutation="true" onclick="event.stopPropagation(); closePosition('${safeTicker}')">Close</button></td>
                 </tr>`;
           })
           .join("");
       }
 
       async function closePosition(ticker) {
-        if (!confirm("Close your " + ticker + " position?")) return;
+        if (!(await requestSimConfirmation("Close your " + ticker + " position?"))) return;
 
         try {
           const response = await fetch("/api/trading-sim/close-position", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: simMutationHeaders(true),
             body: JSON.stringify({ ticker }),
           });
           const data = await response.json();
+          if (!response.ok) {
+            throw new Error(apiErrorMessage(data, "Position could not be closed."));
+          }
 
           if (data.status === "success") {
             await refreshSimStatus();
             await loadTradeLog();
+            setSimMessage("Closed " + ticker + " position.", "success");
           } else {
-            alert(
-              "Failed to close position: " + (data.error || "Unknown error"),
+            setSimMessage(
+              "Failed to close position: " + apiErrorMessage(data, "Unknown error"),
+              "error",
             );
           }
         } catch (error) {
-          console.error("Error closing position:", error);
-          alert("Error closing position");
+          setSimMessage(error.message || "Error closing position.", "error");
         }
       }
 
@@ -2977,21 +3241,24 @@
         );
 
         if (!ticker) {
-          alert("Please enter a ticker symbol");
+          setSimMessage("Please enter a ticker symbol.", "error");
           return;
         }
         if (!quantity || quantity < 1) {
-          alert("Please enter a valid quantity");
+          setSimMessage("Please enter a valid quantity.", "error");
           return;
         }
 
         try {
           const response = await fetch("/api/trading-sim/manual-trade", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: simMutationHeaders(true),
             body: JSON.stringify({ type, ticker, quantity }),
           });
           const data = await response.json();
+          if (!response.ok) {
+            throw new Error(apiErrorMessage(data, "Trade could not be submitted."));
+          }
 
           if (data.status === "success") {
             // Clear form
@@ -3002,22 +3269,23 @@
             await refreshSimStatus();
             await loadTradeLog();
 
-            alert(
+            setSimMessage(
               type.toUpperCase() +
                 " order executed for " +
                 quantity +
                 " shares of " +
                 ticker,
+              "success",
             );
           } else {
-            alert(
+            setSimMessage(
               "Trade failed: " +
-                (data.trade?.error || data.error || "Unknown error"),
+                apiErrorMessage(data.trade, apiErrorMessage(data, "Unknown error")),
+              "error",
             );
           }
         } catch (error) {
-          console.error("Error executing manual trade:", error);
-          alert("Error executing trade");
+          setSimMessage(error.message || "Error executing trade.", "error");
         }
       }
 
@@ -3025,11 +3293,15 @@
         try {
           const response = await fetch("/api/trading-sim/trades?limit=50");
           const data = await response.json();
+          if (!response.ok) {
+            throw new Error(apiErrorMessage(data, "Unable to load trade history."));
+          }
           renderTrades(data.trades || []);
           document.getElementById("trades-count").textContent =
             data.total_trades + " trade" + (data.total_trades !== 1 ? "s" : "");
         } catch (error) {
-          console.error("Error loading trades:", error);
+          setSimMessage(error.message || "Unable to load trade history.", "error");
+          throw error;
         }
       }
 
@@ -3047,22 +3319,31 @@
         container.innerHTML = trades
           .map((t) => {
             const timestamp = new Date(t.timestamp).toLocaleString();
-            const typeClass = t.type;
+            const typeClass = ["buy", "sell", "short", "cover"].includes(t.type) ? t.type : "unknown";
+            const tradeType = escapeHtml(t.type || "trade");
+            const tradeTicker = escapeHtml(t.ticker || "N/A");
+            const tradeTimestamp = escapeHtml(timestamp);
+            const quantity = Number(t.quantity);
+            const price = Number(t.price);
+            const value = Number(t.value);
+            const pnl = Number(t.pnl);
+            const hasPnl = Number.isFinite(pnl);
+            const status = t.status === "executed" ? "executed" : "rejected";
             return `<div class="trade-item">
                     <div class="trade-header">
                         <div class="trade-type">
-                            <span class="trade-type-badge ${typeClass}">${t.type}</span>
-                            <span>${t.ticker}</span>
+                            <span class="trade-type-badge ${typeClass}">${tradeType}</span>
+                            <span>${tradeTicker}</span>
                         </div>
-                        <span class="trade-timestamp">${timestamp}</span>
+                        <span class="trade-timestamp">${tradeTimestamp}</span>
                     </div>
                     <div class="trade-details">
-                        <span>${t.quantity} shares @ $${t.price.toFixed(2)}</span>
-                        <span>Value: $${formatNumber(t.value)}</span>
-                        ${t.pnl !== undefined ? `<span style="color: var(--${t.pnl >= 0 ? "positive" : "negative"})">${t.pnl >= 0 ? "+" : ""}$${t.pnl.toFixed(2)} P&L</span>` : ""}
-                        <span class="badge ${t.status === "executed" ? "high" : "low"}">${t.status}</span>
+                        <span>${Number.isFinite(quantity) ? quantity : "N/A"} shares @ $${Number.isFinite(price) ? price.toFixed(2) : "--"}</span>
+                        <span>Value: ${Number.isFinite(value) ? "$" + formatNumber(value) : "N/A"}</span>
+                        ${hasPnl ? `<span style="color: var(--${pnl >= 0 ? "positive" : "negative"})">${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} P&amp;L</span>` : ""}
+                        <span class="badge ${status === "executed" ? "high" : "low"}">${status}</span>
                     </div>
-                    ${t.reasoning ? `<div class="trade-reasoning">${t.reasoning}</div>` : ""}
+                    ${t.reasoning ? `<div class="trade-reasoning">${escapeHtml(t.reasoning)}</div>` : ""}
                 </div>`;
           })
           .join("");
@@ -3072,6 +3353,9 @@
         try {
           const response = await fetch("/api/trading-sim/history");
           const data = await response.json();
+          if (!response.ok) {
+            throw new Error(apiErrorMessage(data, "Unable to load performance history."));
+          }
           const history = data.history || [];
 
           const ctx = document.getElementById("performance-chart");
@@ -3126,11 +3410,11 @@
                 tooltip: {
                   callbacks: {
                     label: function (context) {
+                      const value = Number(context.parsed.y);
                       return (
                         context.dataset.label +
                         ": " +
-                        context.parsed.y.toFixed(2) +
-                        "%"
+                        (Number.isFinite(value) ? value.toFixed(2) + "%" : "N/A")
                       );
                     },
                   },
@@ -3154,7 +3438,8 @@
             },
           });
         } catch (error) {
-          console.error("Error rendering performance chart:", error);
+          setSimMessage(error.message || "Unable to render performance history.", "error");
+          throw error;
         }
       }
 
@@ -3175,6 +3460,7 @@
         ];
 
         positions.forEach((p, i) => {
+          if (!Number.isFinite(Number(p.value))) return;
           labels.push(p.ticker);
           values.push(p.value);
           colors.push(positionColors[i % positionColors.length]);
@@ -3239,8 +3525,12 @@
         try {
           const response = await fetch("/api/trading-sim/execute", {
             method: "POST",
+            headers: simMutationHeaders(),
           });
           const data = await response.json();
+          if (!response.ok) {
+            throw new Error(apiErrorMessage(data, "AI trading cycle could not be started."));
+          }
 
           // Refresh all data
           await refreshSimStatus();
@@ -3250,17 +3540,18 @@
           // Show notification about executed trades
           const tradesCount = data.trades_count || 0;
           if (tradesCount > 0) {
-            alert(
+            setSimMessage(
               `Executed ${tradesCount} trade${tradesCount !== 1 ? "s" : ""}. Check the trade log for details.`,
+              "success",
             );
           } else {
-            alert(
+            setSimMessage(
               "AI analysis complete. No trading opportunities found at this time.",
+              "info",
             );
           }
         } catch (error) {
-          console.error("Error executing trades:", error);
-          alert("Error executing trades. Please try again.");
+          setSimMessage(error.message || "Error executing trades. Please try again.", "error");
         } finally {
           if (btn) {
             btn.disabled = false;
@@ -3270,29 +3561,28 @@
       }
 
       async function resetSimulation() {
-        if (
-          !confirm(
-            "Are you sure you want to reset the simulation? This will clear all positions and trade history.",
-          )
-        ) {
-          return;
-        }
+        if (!(await requestSimConfirmation(
+          "Reset the simulation? This clears all positions and trade history.",
+        ))) return;
 
         try {
           const response = await fetch("/api/trading-sim/reset", {
             method: "POST",
+            headers: simMutationHeaders(),
           });
           const data = await response.json();
+          if (!response.ok) {
+            throw new Error(apiErrorMessage(data, "Simulation could not be reset."));
+          }
 
           // Refresh all data
           await refreshSimStatus();
           await loadTradeLog();
           await renderPerformanceChart();
 
-          alert("Simulation reset to $100,000. Ready to start fresh!");
+          setSimMessage("Simulation reset to $100,000. Ready to start fresh!", "success");
         } catch (error) {
-          console.error("Error resetting simulation:", error);
-          alert("Error resetting simulation. Please try again.");
+          setSimMessage(error.message || "Error resetting simulation. Please try again.", "error");
         }
       }
       // ============== END TRADING SIMULATOR FUNCTIONS ==============
@@ -3341,7 +3631,7 @@
           });
           const data = await response.json();
           if (data.error) {
-            results.innerHTML = '<div class="error">' + data.error + "</div>";
+            results.innerHTML = '<div class="error">' + escapeHtml(data.error) + "</div>";
           } else {
             displayResults(data);
           }
@@ -3546,7 +3836,9 @@
 
       function wrapTerm(label, value, isPrice) {
         const tooltip = buildTooltip(label, false);
-        const displayVal = isPrice ? "$" + value : value;
+        const displayVal = value === null || value === undefined || value === ""
+          ? "N/A"
+          : isPrice ? "$" + value : value;
         return (
           '<div><span class="term-wrap" style="color: var(--text-muted); font-size: 0.75rem;">' +
           label +
@@ -3624,7 +3916,8 @@
         if (patterns.length > 0) {
           patternsHTML = '<div class="trend-patterns"><span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Detected Patterns:</span><div style="margin-top: 10px;">';
           patterns.forEach(p => {
-            patternsHTML += `<span class="pattern-tag ${p.type}" title="${p.description}">${p.name}</span>`;
+            const patternType = p.type === 'bearish' ? 'bearish' : p.type === 'bullish' ? 'bullish' : 'neutral';
+            patternsHTML += `<span class="pattern-tag ${patternType}" title="${escapeHtml(p.description)}">${escapeHtml(p.name)}</span>`;
           });
           patternsHTML += '</div></div>';
         }
@@ -3636,9 +3929,9 @@
                 <div class="trend-label">Current Trend</div>
                 <div class="trend-badge ${badgeClass}">
                   <span class="trend-badge-icon">${icon}</span>
-                  ${trend}
+                  ${escapeHtml(trend)}
                 </div>
-                <div class="trend-description">${description}</div>
+                <div class="trend-description">${escapeHtml(description)}</div>
               </div>
             </div>
             ${patternsHTML}
@@ -3671,7 +3964,7 @@
                 </div>
                 <div class="how-to-read-item">
                   <h4>📊 What This Trend Means</h4>
-                  <p>${meaning}</p>
+                  <p>${escapeHtml(meaning)}</p>
                 </div>
               </div>
             </div>
@@ -3682,7 +3975,6 @@
       function renderCandlestickChart(candles) {
         try {
           if (!candles || candles.length === 0) {
-            console.log('No chart data available');
             return;
           }
 
@@ -3781,7 +4073,8 @@
           });
 
         } catch (error) {
-          console.error('Error rendering candlestick chart:', error);
+          const canvas = document.getElementById('candlestick-chart');
+          if (canvas) canvas.setAttribute('aria-label', 'Chart unavailable');
         }
       }
 
@@ -3843,19 +4136,26 @@
               : "N/A",
             false,
           ) +
-          wrapTerm("Dividend", data.fundamentals.dividend_yield + "%", false) +
+          wrapTerm(
+            "Dividend",
+            data.fundamentals.dividend_yield === null || data.fundamentals.dividend_yield === undefined
+              ? null
+              : data.fundamentals.dividend_yield + "%",
+            false,
+          ) +
           "</div></div>";
 
         // Build earnings panel
         let earningsPanel =
           '<div class="panel"><div class="panel-header"><span class="panel-title">Recent Earnings</span><a href="https://finance.yahoo.com/quote/' +
-          data.ticker +
+          escapeHtml(data.ticker) +
           '/earnings" target="_blank" style="font-size: 0.75rem; color: var(--text-secondary); text-decoration: none;">View Details →</a></div>';
 
         const earnings = data.earnings || {};
         const earningsHistory = earnings.earnings_history || [];
         const nextEarningsDate = earnings.earnings_date;
-        const avgSurprise = earnings.earnings_surprise_avg || 0;
+        const avgSurprise = Number(earnings.earnings_surprise_avg);
+        const hasAvgSurprise = Number.isFinite(avgSurprise);
 
         if (earningsHistory.length > 0) {
           // Get last 2 earnings reports
@@ -3873,11 +4173,12 @@
               e.estimate !== null && e.estimate !== undefined
                 ? e.estimate.toFixed(2)
                 : "N/A";
-            const surprise =
-              e.surprise !== null && e.surprise !== undefined ? e.surprise : 0;
-            const surpriseClass = surprise >= 0 ? "up" : "down";
-            const surpriseSign = surprise >= 0 ? "+" : "";
-            const beatMiss = surprise >= 0 ? "Beat" : "Missed";
+            const surprise = Number(e.surprise);
+            const hasSurprise = Number.isFinite(surprise);
+            const surpriseClass = hasSurprise ? (surprise >= 0 ? "up" : "down") : "";
+            const surpriseText = hasSurprise
+              ? (surprise >= 0 ? "Beat by +" : "Missed by ") + surprise.toFixed(1) + "%"
+              : "Surprise unavailable";
             const dateStr = e.date ? e.date.split(" ")[0] : "N/A";
 
             earningsPanel +=
@@ -3889,11 +4190,8 @@
               '<span class="' +
               surpriseClass +
               '" style="font-size: 0.75rem; font-weight: 600;">' +
-              beatMiss +
-              " by " +
-              surpriseSign +
-              surprise.toFixed(1) +
-              "%</span>" +
+              surpriseText +
+              "</span>" +
               "</div>" +
               '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">' +
               '<div><div style="font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 2px;">Actual EPS</div><div style="font-size: 1rem; font-weight: 600;">$' +
@@ -3905,42 +4203,36 @@
               "</div></div>";
           });
 
-          // Summary and next earnings prediction
+          // Summarize historical surprises without predicting the next result.
           let summaryText = "";
-          let predictionText = "";
 
-          if (avgSurprise > 5) {
+          if (!hasAvgSurprise) {
             summaryText =
-              data.company_name +
+              "The provider did not return a historical surprise average for this ticker.";
+          } else if (avgSurprise > 5) {
+            summaryText =
+              escapeHtml(data.company_name) +
               " has consistently beaten analyst expectations with an average surprise of +" +
               avgSurprise.toFixed(1) +
               "%.";
-            predictionText =
-              "Based on this trend, the company is likely to beat estimates in the next earnings report.";
           } else if (avgSurprise > 0) {
             summaryText =
-              data.company_name +
+              escapeHtml(data.company_name) +
               " has generally met or slightly exceeded expectations with an average surprise of +" +
               avgSurprise.toFixed(1) +
               "%.";
-            predictionText =
-              "Expect the company to meet or slightly beat estimates next quarter.";
           } else if (avgSurprise > -5) {
             summaryText =
-              data.company_name +
+              escapeHtml(data.company_name) +
               " has been near analyst expectations with an average surprise of " +
               avgSurprise.toFixed(1) +
               "%.";
-            predictionText =
-              "Results may come in close to estimates. Watch for guidance changes.";
           } else {
             summaryText =
-              data.company_name +
+              escapeHtml(data.company_name) +
               " has missed analyst expectations with an average surprise of " +
               avgSurprise.toFixed(1) +
               "%.";
-            predictionText =
-              "Caution advised - the company may continue to underperform expectations.";
           }
 
           earningsPanel +=
@@ -3948,16 +4240,9 @@
             '<div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 8px;">' +
             summaryText +
             "</div>" +
-            '<div style="font-size: 0.8125rem; color: var(--text);"><strong>Next Earnings:</strong> ' +
-            predictionText +
+            '<div style="font-size: 0.8125rem; color: var(--text);"><strong>Next earnings date:</strong> ' +
+            (nextEarningsDate ? escapeHtml(nextEarningsDate) : "Unavailable from provider") +
             "</div>";
-
-          if (nextEarningsDate) {
-            earningsPanel +=
-              '<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px;">Expected: ' +
-              nextEarningsDate +
-              "</div>";
-          }
 
           earningsPanel += "</div></div>";
         } else {
@@ -3969,14 +4254,14 @@
 
         document.getElementById("results").innerHTML =
           '<div class="score-hero"><div class="score-company"><h2>' +
-          data.company_name +
+          escapeHtml(data.company_name) +
           '</h2><div class="ticker">' +
-          data.ticker +
+          escapeHtml(data.ticker) +
           '</div><div class="sector">' +
-          data.sector +
+          escapeHtml(data.sector) +
           " / " +
-          data.industry +
-          '</div></div><div class="score-value"><div class="score-circle"><svg viewBox="0 0 160 160"><circle class="track" cx="80" cy="80" r="70"/><circle class="progress" cx="80" cy="80" r="70" stroke="' +
+          escapeHtml(data.industry) +
+          '</div><div class="data-status">Source: ' + escapeHtml(data.data_source || "provider") + ' · Last bar: ' + escapeHtml(data.data_as_of || "unavailable") + '</div></div><div class="score-value"><div class="score-circle"><svg viewBox="0 0 160 160"><circle class="track" cx="80" cy="80" r="70"/><circle class="progress" cx="80" cy="80" r="70" stroke="' +
           scoreColor +
           '" stroke-dasharray="' +
           circumference +
@@ -3989,7 +4274,7 @@
           '</span></div><div class="score-label">Investment Score</div><div class="recommendation ' +
           recClass +
           '">' +
-          data.recommendation +
+          escapeHtml(data.recommendation) +
           "</div></div></div>" +
           '<div class="metrics-grid"><div class="metric-cell"><div class="label">Current Price</div><div class="value">$' +
           data.current_price +
@@ -4033,15 +4318,17 @@
 
       // Initialize on page load
       document.addEventListener("DOMContentLoaded", function () {
-        console.log("DOMContentLoaded fired");
         const urlParams = new URLSearchParams(window.location.search);
         const tickerParam = urlParams.get("ticker");
+        const sectionParam = urlParams.get("section");
         if (tickerParam) {
           document.getElementById("ticker-input").value = tickerParam;
           showSection("analyze");
           analyzeStock();
         } else {
-          console.log("Calling loadSnapshot...");
+          if (["analyze", "earnings", "penny", "trading-sim"].includes(sectionParam)) {
+            showSection(sectionParam);
+          }
           loadSnapshot();
         }
       });
@@ -4050,7 +4337,6 @@
       window.addEventListener("load", function () {
         const content = document.getElementById("snapshot-content");
         if (content && content.style.display === "none") {
-          console.log("Window load fallback - calling loadSnapshot");
           loadSnapshot();
         }
       });

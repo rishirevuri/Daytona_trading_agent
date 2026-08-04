@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#1a1a2e">
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/static/icon-192.png">
-    <title>{{ ticker }} - Investment Scorer</title>
+    <title>{{ ticker }} - StockPulse</title>
     <style>
         * {
             margin: 0;
@@ -242,12 +242,33 @@
     <script>
         const ticker = '{{ ticker }}';
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[character]));
+        }
+
+        function formatMetric(value, digits = 2) {
+            const number = Number(value);
+            return Number.isFinite(number) ? number.toFixed(digits) : 'N/A';
+        }
+
+        function formatPrice(value) {
+            const number = Number(value);
+            return Number.isFinite(number) ? '$' + number.toFixed(2) : '--';
+        }
+
         function formatNumber(num) {
-            if (!num) return 'N/A';
-            if (num >= 1e12) return '$' + (num / 1e12).toFixed(2) + 'T';
-            if (num >= 1e9) return '$' + (num / 1e9).toFixed(2) + 'B';
-            if (num >= 1e6) return '$' + (num / 1e6).toFixed(2) + 'M';
-            return '$' + num.toLocaleString();
+            const number = Number(num);
+            if (!Number.isFinite(number) || number === 0) return 'N/A';
+            if (number >= 1e12) return '$' + (number / 1e12).toFixed(2) + 'T';
+            if (number >= 1e9) return '$' + (number / 1e9).toFixed(2) + 'B';
+            if (number >= 1e6) return '$' + (number / 1e6).toFixed(2) + 'M';
+            return '$' + number.toLocaleString();
         }
 
         async function loadStockData() {
@@ -257,7 +278,7 @@
 
                 if (data.error) {
                     document.getElementById('stock-content').innerHTML = `
-                        <div class="error">Error loading stock data: ${data.error}</div>
+                        <div class="error">Error loading stock data: ${escapeHtml(data.error)}</div>
                         <div style="text-align: center; margin-top: 20px;">
                             <a href="/" class="action-btn secondary">Back to Snapshot</a>
                         </div>
@@ -301,10 +322,10 @@
                     return `
                         <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 15px; margin-bottom: 10px; border-left: 3px solid ${typeColor};">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <span style="font-weight: bold; color: #fff; font-size: 1.1rem;">${p.name}</span>
-                                <span style="background: ${typeColor}22; color: ${typeColor}; padding: 4px 12px; border-radius: 15px; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">${p.type}</span>
+                                <span style="font-weight: bold; color: #fff; font-size: 1.1rem;">${escapeHtml(p.name || 'Pattern')}</span>
+                                <span style="background: ${typeColor}22; color: ${typeColor}; padding: 4px 12px; border-radius: 15px; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">${escapeHtml(p.type || 'unknown')}</span>
                             </div>
-                            <div style="color: #8892b0; font-size: 0.9rem; line-height: 1.4;">${p.description}</div>
+                            <div style="color: #8892b0; font-size: 0.9rem; line-height: 1.4;">${escapeHtml(p.description || '')}</div>
                         </div>
                     `;
                 }).join('');
@@ -314,14 +335,14 @@
 
             document.getElementById('stock-content').innerHTML = `
                 <div class="stock-header">
-                    <h1 id="company-name">${data.company_name || ticker}</h1>
-                    <div class="ticker">${data.ticker}</div>
-                    <div class="sector">${data.sector || 'N/A'} - ${data.industry || 'N/A'}</div>
-                    <div class="price">$${data.current_price || '--'}</div>
+                    <h1 id="company-name">${escapeHtml(data.company_name || ticker)}</h1>
+                    <div class="ticker">${escapeHtml(data.ticker || ticker)}</div>
+                    <div class="sector">${escapeHtml(data.sector || 'N/A')} - ${escapeHtml(data.industry || 'N/A')}</div>
+                    <div class="price">${formatPrice(data.current_price)}</div>
                 </div>
 
                 <div class="actions">
-                    <a href="/?ticker=${ticker}" class="action-btn primary">Get Full Investment Analysis</a>
+                    <a href="/?ticker=${encodeURIComponent(ticker)}" class="action-btn primary">Get Full Investment Analysis</a>
                     <a href="/" class="action-btn secondary">Back to Snapshot</a>
                 </div>
 
@@ -335,12 +356,12 @@
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
                         <div class="stat-card" style="text-align: center;">
                             <div class="label">Price Trend</div>
-                            <div class="value" style="color: ${trendColor}; font-size: 1.4rem;">${priceTrend}</div>
-                            <div style="color: #8892b0; font-size: 0.85rem; margin-top: 8px;">${trendDesc}</div>
+                            <div class="value" style="color: ${trendColor}; font-size: 1.4rem;">${escapeHtml(priceTrend)}</div>
+                            <div style="color: #8892b0; font-size: 0.85rem; margin-top: 8px;">${escapeHtml(trendDesc)}</div>
                         </div>
                         <div class="stat-card" style="text-align: center;">
                             <div class="label">Pattern Signal</div>
-                            <div class="value" style="color: ${patternColor}; font-size: 1.4rem;">${patternTrend}</div>
+                            <div class="value" style="color: ${patternColor}; font-size: 1.4rem;">${escapeHtml(patternTrend)}</div>
                             <div style="color: #8892b0; font-size: 0.85rem; margin-top: 8px;">${patterns.length} pattern(s) detected</div>
                         </div>
                     </div>
@@ -353,7 +374,7 @@
                     <div class="fundamentals-grid" id="fundamentals">
                         <div class="stat-card">
                             <div class="label">P/E Ratio</div>
-                            <div class="value">${data.pe_ratio ? data.pe_ratio.toFixed(2) : 'N/A'}</div>
+                            <div class="value">${formatMetric(data.pe_ratio)}</div>
                         </div>
                         <div class="stat-card">
                             <div class="label">Market Cap</div>
@@ -361,19 +382,19 @@
                         </div>
                         <div class="stat-card">
                             <div class="label">Shares Outstanding</div>
-                            <div class="value">${data.shares_outstanding ? formatNumber(data.shares_outstanding) : 'N/A'}</div>
+                            <div class="value">${formatNumber(data.shares_outstanding)}</div>
                         </div>
                         <div class="stat-card">
                             <div class="label">Beta</div>
-                            <div class="value">${data.beta ? data.beta.toFixed(2) : 'N/A'}</div>
+                            <div class="value">${formatMetric(data.beta)}</div>
                         </div>
                         <div class="stat-card">
                             <div class="label">52-Week High</div>
-                            <div class="value green">$${data['52_week_high'] ? data['52_week_high'].toFixed(2) : '--'}</div>
+                            <div class="value green">${formatPrice(data['52_week_high'])}</div>
                         </div>
                         <div class="stat-card">
                             <div class="label">52-Week Low</div>
-                            <div class="value red">$${data['52_week_low'] ? data['52_week_low'].toFixed(2) : '--'}</div>
+                            <div class="value red">${formatPrice(data['52_week_low'])}</div>
                         </div>
                     </div>
                 </div>

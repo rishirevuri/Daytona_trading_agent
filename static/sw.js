@@ -1,5 +1,5 @@
 // StockPulse Service Worker
-const CACHE_NAME = 'stockpulse-v2';
+const CACHE_NAME = 'stockpulse-v4';
 const STATIC_ASSETS = [
     '/',
     '/manifest.json',
@@ -13,7 +13,6 @@ self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => {
-                console.log('StockPulse SW: Caching static assets');
                 return cache.addAll(STATIC_ASSETS);
             })
             .then(() => self.skipWaiting())
@@ -33,7 +32,7 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// Fetch event - network first for API, cache first for static
+// Fetch event - network first for live data and document navigations.
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
@@ -42,30 +41,46 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             fetch(event.request)
                 .then((response) => {
-                    // Cache successful API responses for offline fallback
-                    if (response.ok) {
-                        const responseClone = response.clone();
-                        caches.open(CACHE_NAME).then((cache) => {
-                            cache.put(event.request, responseClone);
-                        });
-                    }
                     return response;
                 })
                 .catch(() => {
-                    // Try to return cached API response if network fails
-                    return caches.match(event.request).then((cachedResponse) => {
-                        if (cachedResponse) {
-                            return cachedResponse;
-                        }
-                        return new Response(
-                            JSON.stringify({ error: 'You are offline. Please check your connection.' }),
-                            { 
-                                status: 503,
-                                headers: { 'Content-Type': 'application/json' } 
+                    // Never replay cached market data as if it were current.
+                    return new Response(
+                        JSON.stringify({
+                            error: 'You are offline. Please check your connection.',
+                            code: 'offline',
+                            data_status: 'offline'
+                        }),
+                        {
+                            status: 503,
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Cache-Control': 'no-store'
                             }
-                        );
-                    });
+                        }
+                    );
                 })
+        );
+        return;
+    }
+
+    // Always prefer the current HTML shell so a deployment cannot be hidden
+    // behind a stale cached document. Fall back to the last known shell only
+    // when the browser is offline.
+    if (event.request.mode === 'navigate') {
+        event.respondWith(
+            fetch(event.request)
+                .then((networkResponse) => {
+                    if (networkResponse && networkResponse.status === 200) {
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(event.request, networkResponse.clone());
+                        });
+                    }
+                    return networkResponse;
+                })
+                .catch(() => caches.match(event.request).then((cachedResponse) => {
+                    return cachedResponse || caches.match('/');
+                }))
         );
         return;
     }
